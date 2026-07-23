@@ -1,0 +1,21 @@
+# macos
+.DS_Store
+
+# local editor (existing 4.7.1 install)
+Godot.app/
+
+# scons
+.scons_cache/
+.sconsign.dblite
+*.os
+*.o
+*.obj
+
+# compilation database
+compile_commands.json
+
+# godot generated
+godot-project/.godot/
+
+# build outputs
+godot-project/bin/
