@@ -1,5 +1,16 @@
 # tiles
 
+`tiles` is a puzzle game conceived for the gmtk 2026 theme, "count down." each
+level asks the player to arrange rotated and translated polygonal prototiles so
+they exactly cover a bounded target without overlaps. the current campaign
+pitch counts down the palette's order—the number of distinct prototile
+types—from generous early palettes toward celebrated two- and one-prototile
+tilings.
+
+the game is still being designed. its shared vocabulary and current invariants
+are defined in [DEFINITIONS.md](DEFINITIONS.md); everything else remains open to
+playtesting and iteration.
+
 ## project structure
 
 ```text
