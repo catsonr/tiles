@@ -61,6 +61,22 @@ act 3 is deliberately an intermediate aggregation step. act 3-1 establishes
 the command boundary before act 4 introduces Godot, so the first game nodes can
 consume rather than invent the application model.
 
+act 3-1 exposes exact placement plus full-edge and vertex feature mating as
+typed `State` commands. every candidate is selected from the engine-owned
+palette through strong palette-entry and distinct-orientation indices. the
+engine derives finite-supply use from the authoritative arrangement and
+delegates geometry to the existing core; it exposes no mutable arrangement
+view.
+
+exact placement accepts an authoritative q16.48 `Point`. the engine does not
+infer an integer grid, cell size, snapping rule, or translation restriction
+from tetromino content, tier 1, or coordinate representation. those are future
+input or explicitly authored level policies. likewise, full-edge and vertex
+mating are convenient exact translation derivations rather than an exhaustive
+classification of legal contact: exact placement may create any
+interior-disjoint contact, including partial-edge contact with no coincident
+polygon vertices.
+
 ## geometric capability tiers
 
 the game core grows through three geometric capability tiers. every tier
@@ -185,6 +201,12 @@ act 3 introduces this state without mutation commands. act 3-1 adds typed
 commands for editing it while preserving the core invariants and keeping the
 arrangement inaccessible for arbitrary external mutation.
 
+the commands resolve palette-authored oriented candidates, derive configured
+supply use from arrangement contents, and either place at an exact q16.48
+translation or delegate full-edge/vertex feature mating to the core. they do
+not encode geometry tiers, integer-grid policy, selection, or presentation
+state.
+
 ## game mvp
 
 ### application surface
@@ -211,6 +233,11 @@ arrangement inaccessible for arbitrary external mutation.
 - allow an oriented prototile to be added to the arrangement;
 - allow the user to request a compatible lossless join; and
 - refresh the rendered arrangement after core state changes.
+
+game-side selection and any snapping policy produce typed engine commands.
+feature mating can derive a translation from selected complete edges or
+vertices; exact placement remains the general path for other legal contact,
+including partial-edge contact which shares no polygon vertices.
 
 the editor only needs enough interaction to demonstrate repeated tile
 composition. production authoring tools and level-player interaction are
