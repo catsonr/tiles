@@ -9,25 +9,57 @@ together.
 this is not yet a level player. it does not need to decide whether a target
 admits a tiling or whether an arrangement solves a level.
 
-## current foundation
+## architecture
 
 the domain vocabulary is fixed in `DEFINITIONS.md`. the authoritative
 fixed-point coordinate system is fixed in `COORDINATES.md`. the repository
 already builds and loads a minimal c++ GDExtension.
 
-the next work divides into a plain c++ game core and a godot presentation
-surface:
+the authored code divides into three one-way layers:
 
 ```text
-godot input ──commands──▶ game core
-                           │
-                      arrangement
-                           │
-godot rendering ◀──read-only view
+src/core/    namespace tiles          exact geometry and proof-bearing values
+src/engine/  namespace tiles::engine  mutable game/editor state
+src/game/    namespace tiles::game    godot input and presentation
 ```
 
-the core owns all geometric truth. godot displays that state and forwards
-editing intent; rendered coordinates never flow back into the model.
+their dependency direction is:
+
+```text
+authored content
+      │
+      ▼
+tiles core validators and compilers
+      │
+      ▼
+tiles::engine state ◀──── typed commands from tiles::game
+      │
+      └──────── read-only state ─────▶ tiles::game rendering
+```
+
+`tiles` owns all geometric truth. `tiles::engine` aggregates core values into
+the current palette and arrangement and will become the only mutation surface
+used by the game. `tiles::game` owns Godot nodes, input interpretation, lossy
+coordinate projection, and rendering.
+
+the engine exposes authoritative core polygons through read-only state; it does
+not copy them into a second coordinate representation. the game converts
+q16.48 `Point`s to Godot rendering coordinates at the final presentation
+boundary. rendered coordinates never flow back into either engine state or core
+geometry.
+
+the immediate act sequence is:
+
+```text
+acts 0–2  exact tier-1 core
+act 3     read-only engine state: Supply, PaletteEntry, Palette, State
+act 3-1   typed engine commands which mutate State
+act 4     first tiles::game surface and direct-to-editor rendering
+```
+
+act 3 is deliberately an intermediate aggregation step. act 3-1 establishes
+the command boundary before act 4 introduces Godot, so the first game nodes can
+consume rather than invent the application model.
 
 ## geometric capability tiers
 
@@ -94,8 +126,8 @@ same projected direction vectors; obvious joins therefore continue to use
 exact geometric comparison rather than a separately authored compatibility
 table.
 
-act 3 implements tier 2 after tier 1 has established orientation-bearing
-placements and the oriented-geometry seam.
+a later geometric act implements tier 2 after the tier-1 engine and game
+vertical slice is working. its act number is intentionally not assigned here.
 
 ### tier 3 — bounded nonuniform compilation
 
@@ -130,27 +162,52 @@ exactly. insertion retains the existing pairwise interior-disjointness
 invariant; neither operation proves level legality or that an arrangement is a
 solution.
 
-## godot renderer mvp
+## engine mvp
+
+### state
+
+- represent supply as either a positive finite amount or unlimited;
+- group one prototile, its supply, and its distinct admitted
+  `OrientedPrototile`s into one `PaletteEntry`;
+- represent a nonempty authored-order `Palette`;
+- define palette order as the number of entries, never the number of oriented
+  variants or available pieces;
+- own one palette and one authoritative `Arrangement` in
+  `tiles::engine::State`; and
+- expose both through read-only views.
+
+levels are handcrafted. palette construction rejects duplicate
+`PrototileId`s, but does not search for geometric congruence between different
+entries; authored content is responsible for not listing congruent prototiles
+as distinct types.
+
+act 3 introduces this state without mutation commands. act 3-1 adds typed
+commands for editing it while preserving the core invariants and keeping the
+arrangement inaccessible for arbitrary external mutation.
+
+## game mvp
 
 ### application surface
 
-- replace the disposable smoke-test scene with real application structure;
-- extract the reusable `SceneMachine`/`BXScene` foundation from
-  `rhythm-game`, without importing its game-specific states or assets;
-- create a new title screen; and
-- create a level-editor state reachable from the title screen.
+- place Godot-specific code in `src/game/` under `tiles::game`;
+- replace the disposable smoke-test scene with one fullscreen editor surface;
+- boot directly into that editor; and
+- defer scene navigation, a title screen, and `SceneMachine` until the
+  application contains more than one meaningful state.
 
 ### arrangement view
 
 - define the one-way projection from authoritative polygons to godot rendering
   data;
-- create and update one visual tile for each placement;
-- render multiple placements together from a core arrangement; and
-- keep godot node lifetime and presentation state outside the game core.
+- render palette reference polygons and arrangement footprints from
+  `tiles::engine::State`;
+- begin with a custom `Control::_draw()` surface rather than one node per
+  placement; and
+- keep Godot node lifetime and presentation state in `tiles::game`.
 
 ### editing surface
 
-- provide a small prototile palette;
+- display the engine-owned prototile palette;
 - allow an oriented prototile to be added to the arrangement;
 - allow the user to request a compatible lossless join; and
 - refresh the rendered arrangement after core state changes.
@@ -161,22 +218,23 @@ separate work.
 
 ## vertical milestones
 
-1. construct and render one canonical prototile;
-2. render a core-owned arrangement containing several independent placements;
-3. join a second tile to a selected tile without coordinate drift;
-4. repeat joins while rendering the resulting arrangement; and
-5. reach the working editor through the title-screen scene flow.
+1. aggregate one handcrafted palette and arrangement in
+   `tiles::engine::State`;
+2. mutate that state only through typed engine commands;
+3. boot directly into a Godot editor which renders the engine-owned palette;
+4. render an engine-owned arrangement containing placements;
+5. join a second tile through the engine without coordinate drift; and
+6. repeat joins while rendering the resulting arrangement.
 
-the core and renderer may advance independently against a minimal arrangement
-view. each vertical milestone integrates only the surface needed to make the
-next behavior visible.
+each milestone integrates only the surface needed to make the next behavior
+visible. regions, level rules, and the final player may reuse the same engine
+state without changing the core-to-rendering direction.
 
 ## mvp complete
 
 the milestone is complete when the application can:
 
-- open on a title screen;
-- enter the level editor;
+- open directly into the editor;
 - display a small palette of prototiles and their allowed orientations;
 - add and losslessly join multiple tiles;
 - render the authoritative arrangement after every edit; and
@@ -189,18 +247,19 @@ the milestone is complete when the application can:
   pairwise interior-disjointness invariant;
 - target regions and level completion;
 - the level-player interface and campaign flow;
+- title-screen and multi-scene navigation;
 - save data, polished content authoring, and production ui;
 - automated tiling search; and
 - rendering details beyond what is needed to distinguish and place tiles.
 
 ## open questions
 
-- the exact read-only contract between the core and renderer;
 - the authored input and checked projection contract for tier-2 uniform
   geometry;
 - which concrete content requirement, if any, justifies tier 3;
-- how much of the existing scene-machine transition and stack behavior the mvp
-  retains;
-- which godot rendering primitive displays a polygon; and
+- the eventual `Region`, `Target`, `RotationRule`, and `Level` engine
+  materialization;
+- the authored-content loading format;
+- when the application becomes large enough to justify scene navigation; and
 - the minimum editor interaction needed to select tiles, orientations, and
   joins.
