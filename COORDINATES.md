@@ -24,16 +24,21 @@ lattice are quantized when they enter the model; afterward, the quantized value
 is authoritative. equality within the model is exact rather than
 tolerance-based.
 
+source constructions may retain greater precision, but only their final
+vertices are quantized. canonical transformed geometry is derived directly
+from its source, never from another quantized transform.
+
 arithmetic must be deterministic. operations which can leave the lattice round
 to nearest, with exact ties away from zero. overflow is an error, never wrapping
 or saturation. calculations such as multiplication, cross products, and area
-may require a wider intermediate representation.
+use exact wider intermediates without changing the coordinate representation.
 
 ## canonical c++ types
 
 the coordinate-bearing value types have the following representation:
 
 ```cpp
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -86,18 +91,28 @@ struct Point final {
     }
 };
 
+struct Triangle final {
+    std::array<Point, 3> vertices;
+};
+
 class Polygon final {
 public:
     using Vertices = std::vector<Point>;
+    using Triangulation = std::vector<Triangle>;
 
     const Vertices &vertices() const {
         return vertices_;
     }
 
+    const Triangulation &triangulation() const {
+        return triangulation_;
+    }
+
 private:
     Vertices vertices_;
+    Triangulation triangulation_;
 
-    explicit Polygon(Vertices p_vertices);
+    explicit Polygon(Vertices p_vertices, Triangulation p_triangulation);
 };
 
 } // namespace tiles
@@ -108,8 +123,17 @@ ordering compare the stored integer directly.
 
 `Polygon::vertices_` stores one vertex per corner in connection order. the
 closing vertex is implicit and must not be repeated at the end. the constructor
-is private because only validated vertex sequences may produce a `Polygon`.
-the public validation and construction interface is not decided here.
+is private because only validated vertex sequences with a certified
+triangulation may produce a `Polygon`.
+
+an `n`-vertex polygon stores exactly `n - 2` nondegenerate triangles. each
+triangle uses polygon vertices, triangle interiors are pairwise disjoint, and
+their union is the polygon. triangulation is derived geometry; polygon identity
+is determined by its cyclic vertices.
+
+validated polygons use counterclockwise cartesian winding and begin at their
+lexicographically smallest vertex. a prototile further translates that vertex
+to the local origin, giving its reference polygon a stable representation.
 
 ## rotations and placements
 
@@ -143,6 +167,7 @@ the fixed lattice provides:
 - deterministic coordinates across the game model;
 - exact equality for shared vertices and translations;
 - stable polygon predicates without pervasive epsilon comparisons;
+- exact triangulation into reusable convex pieces;
 - much more precision and range than the intended level scale requires; and
 - one explicit boundary where ideal geometry becomes finite game state.
 
@@ -155,6 +180,5 @@ the fixed lattice provides:
   placements;
 - how canonical oriented polygons are generated, validated, and stored;
 - the authoring and serialization format for fixed-point geometry;
-- polygon normalization and validation details;
 - the arrangement structures used to compose or relate placements; and
 - the eventual conversion from model geometry to godot rendering data.

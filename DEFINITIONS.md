@@ -8,7 +8,13 @@ not an implementation plan or roadmap.
 the notation is illustrative haskell, not a commitment to an implementation:
 
 ```haskell
-type Polygon = ValidatedCyclicSequence Point
+type Triangle = NondegenerateTriple Point
+type Triangulation = ExactInteriorDecomposition Triangle
+
+data Polygon = Polygon
+  { vertices      :: ValidatedCyclicSequence Point
+  , triangulation :: Triangulation
+  }
 
 data Prototile = Prototile
   { identity :: PrototileId
@@ -50,7 +56,7 @@ data Level = Level
 ## polygon
 
 a **polygon** is a closed, filled, hole-free geometric shape represented by a
-finite cyclic sequence of vertices.
+finite cyclic sequence of vertices and a triangulation of its interior.
 
 a polygon:
 
@@ -63,12 +69,18 @@ a polygon:
 the sequence determines which vertices are connected. it is not an unordered
 set. non-simple loops are invalid input, not another kind of polygon.
 
+a polygon with `n` vertices carries exactly `n - 2` nondegenerate triangles.
+their vertices are polygon vertices, their interiors are pairwise disjoint,
+and their union is the polygon. the triangulation is derived evidence, not
+part of polygon identity.
+
 coordinate representation is deliberately unspecified. the definition does
 not choose floating point, fixed point, or an integer grid.
 
 > "vertices are the correct abstraction!"
 
-**motivation:** polygons give rendering and geometry one shared abstraction.
+**motivation:** vertices remain the shared rendering abstraction, while
+triangles give geometry a certified decomposition into simple convex pieces.
 curves may be quantized into polygons before entering the model.
 
 ## prototile
