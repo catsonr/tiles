@@ -98,6 +98,53 @@ Result<PlacementId, PlaceCommandError> State::apply(const PlaceCommand &p_comman
     return Applied::success(inserted.value());
 }
 
+Result<Placement, MateCommandError> State::preview(
+    const MateFullEdgesCommand &p_command) const {
+    using Previewed = Result<Placement, MateCommandError>;
+
+    // The same resolution apply performs, in the same precedence, against the
+    // same authoritative arrangement. Nothing is reserved or counted here:
+    // supply is derived from arrangement contents, which this cannot change.
+    auto candidate =
+        resolve_candidate(p_command.candidate_entry, p_command.candidate_orientation);
+    if (!candidate) {
+        return Previewed::failure(MateCommandError(candidate.error()));
+    }
+
+    auto previewed = arrangement_.preview_join_full_edges(
+        p_command.anchor,
+        p_command.anchor_edge,
+        *candidate.value(),
+        p_command.candidate_edge);
+    if (!previewed) {
+        return Previewed::failure(MateCommandError(previewed.error()));
+    }
+
+    return Previewed::success(std::move(previewed).value());
+}
+
+Result<Placement, MateCommandError> State::preview(
+    const MateVerticesCommand &p_command) const {
+    using Previewed = Result<Placement, MateCommandError>;
+
+    auto candidate =
+        resolve_candidate(p_command.candidate_entry, p_command.candidate_orientation);
+    if (!candidate) {
+        return Previewed::failure(MateCommandError(candidate.error()));
+    }
+
+    auto previewed = arrangement_.preview_join_vertices(
+        p_command.anchor,
+        p_command.anchor_vertex,
+        *candidate.value(),
+        p_command.candidate_vertex);
+    if (!previewed) {
+        return Previewed::failure(MateCommandError(previewed.error()));
+    }
+
+    return Previewed::success(std::move(previewed).value());
+}
+
 Result<PlacementId, MateCommandError> State::apply(const MateFullEdgesCommand &p_command) {
     using Applied = Result<PlacementId, MateCommandError>;
 

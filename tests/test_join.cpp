@@ -89,6 +89,15 @@ bool footprint_has_vertex(const Placement &p_placement, Point p_point) {
     return false;
 }
 
+// Complete physical identity of two placements: prototile, orientation, exact
+// translation, and the whole ordered footprint boundary.
+bool same_geometry(const Placement &p_lhs, const Placement &p_rhs) {
+    return p_lhs.prototile().id() == p_rhs.prototile().id()
+        && p_lhs.orientation() == p_rhs.orientation()
+        && p_lhs.translation() == p_rhs.translation()
+        && p_lhs.footprint().vertices() == p_rhs.footprint().vertices();
+}
+
 } // namespace
 
 TEST_CASE("join with exact opposite edge vectors succeeds") {
@@ -397,4 +406,224 @@ TEST_CASE("a long join chain shares raw endpoints without drift") {
     // The final tile sits exactly where exact arithmetic places it.
     const Placement &last = arrangement.entries().back().placement;
     CHECK(last.translation() == raw(static_cast<std::int64_t>(steps) * 4, 0));
+}
+
+// ---------------------------------------------------------------------------
+// full-edge preview
+// ---------------------------------------------------------------------------
+
+TEST_CASE("full-edge preview returns the exact placement without mutating anything") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    const EdgeIndex anchor_edge =
+        find_edge(arrangement.entries().front().placement.footprint(), raw(0, 0), raw(4, 0));
+    const OrientedPrototile candidate = reference_orientation(square4());
+    const EdgeIndex candidate_edge =
+        find_edge(candidate.canonical_polygon(), raw(4, 4), raw(0, 4));
+
+    const std::size_t before_size = arrangement.entries().size();
+    const PlacementId before_next = arrangement.next_id().value();
+    const Polygon::Vertices before_candidate = candidate.canonical_polygon().vertices();
+
+    const Arrangement &observed = arrangement;
+    auto previewed =
+        observed.preview_join_full_edges(anchor, anchor_edge, candidate, candidate_edge);
+    CHECK(previewed.has_value());
+    if (!previewed) {
+        return;
+    }
+
+    // Exactly the placement the mutating verb would have derived.
+    CHECK(previewed.value().translation() == raw(0, -4));
+    CHECK(previewed.value().prototile().id() == PrototileId(1));
+    CHECK(previewed.value().orientation() == Orientation::reference());
+    CHECK(footprint_has_vertex(previewed.value(), raw(0, 0)));
+    CHECK(footprint_has_vertex(previewed.value(), raw(4, 0)));
+
+    // Entries, order, ids, and the allocator are all untouched.
+    CHECK(arrangement.entries().size() == before_size);
+    CHECK(arrangement.entries().front().id == anchor);
+    CHECK(arrangement.next_id().value() == before_next);
+    // As is the supplied candidate.
+    CHECK(candidate.orientation() == Orientation::reference());
+    CHECK(candidate.canonical_polygon().vertices() == before_candidate);
+}
+
+TEST_CASE("repeated full-edge preview is identical and agrees with an immediate join") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    const EdgeIndex anchor_edge =
+        find_edge(arrangement.entries().front().placement.footprint(), raw(0, 0), raw(4, 0));
+    const OrientedPrototile candidate = oriented(square4(), Orientation::quarter());
+    const EdgeIndex candidate_edge =
+        find_edge(candidate.canonical_polygon(), raw(4, 4), raw(0, 4));
+
+    auto first =
+        arrangement.preview_join_full_edges(anchor, anchor_edge, candidate, candidate_edge);
+    auto second =
+        arrangement.preview_join_full_edges(anchor, anchor_edge, candidate, candidate_edge);
+    CHECK(first.has_value());
+    CHECK(second.has_value());
+    if (!first || !second) {
+        return;
+    }
+    CHECK(same_geometry(first.value(), second.value()));
+
+    auto joined =
+        arrangement.try_join_full_edges(anchor, anchor_edge, candidate, candidate_edge);
+    CHECK(joined.has_value());
+    if (!joined) {
+        return;
+    }
+    CHECK(arrangement.entries().size() == 2);
+    CHECK(arrangement.entries().back().id == joined.value());
+    // The stored placement is the previewed one, down to the whole boundary.
+    CHECK(same_geometry(arrangement.entries().back().placement, first.value()));
+}
+
+TEST_CASE("full-edge preview retains anchor and edge precedence") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    const EdgeIndex good =
+        find_edge(arrangement.entries().front().placement.footprint(), raw(0, 0), raw(4, 0));
+    const OrientedPrototile candidate = reference_orientation(square4());
+
+    // A missing anchor answers before either edge is inspected, exactly as in
+    // the mutating verb.
+    auto missing = arrangement.preview_join_full_edges(
+        PlacementId(999), EdgeIndex(50), candidate, EdgeIndex(50));
+    CHECK(missing.has_value() == false);
+    CHECK(missing.error().code == JoinErrorCode::anchor_not_found);
+
+    auto bad_anchor =
+        arrangement.preview_join_full_edges(anchor, EdgeIndex(99), candidate, good);
+    CHECK(bad_anchor.has_value() == false);
+    CHECK(bad_anchor.error().code == JoinErrorCode::anchor_edge_out_of_range);
+
+    auto bad_candidate =
+        arrangement.preview_join_full_edges(anchor, good, candidate, EdgeIndex(99));
+    CHECK(bad_candidate.has_value() == false);
+    CHECK(bad_candidate.error().code == JoinErrorCode::candidate_edge_out_of_range);
+
+    CHECK(arrangement.entries().size() == 1);
+    CHECK(arrangement.next_id().value() == PlacementId(1));
+}
+
+TEST_CASE("full-edge preview retains incompatible_edges for both incompatible kinds") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    const EdgeIndex anchor_edge =
+        find_edge(arrangement.entries().front().placement.footprint(), raw(0, 0), raw(4, 0));
+
+    // Same direction rather than opposite.
+    const OrientedPrototile same_length = reference_orientation(square4());
+    auto same_direction = arrangement.preview_join_full_edges(
+        anchor, anchor_edge, same_length,
+        find_edge(same_length.canonical_polygon(), raw(0, 0), raw(4, 0)));
+    CHECK(same_direction.has_value() == false);
+    CHECK(same_direction.error().code == JoinErrorCode::incompatible_edges);
+
+    // Opposite direction but a different length.
+    const OrientedPrototile longer = reference_orientation(square6());
+    auto unequal = arrangement.preview_join_full_edges(
+        anchor, anchor_edge, longer,
+        find_edge(longer.canonical_polygon(), raw(6, 6), raw(0, 6)));
+    CHECK(unequal.has_value() == false);
+    CHECK(unequal.error().code == JoinErrorCode::incompatible_edges);
+}
+
+TEST_CASE("full-edge preview keeps translation and footprint overflow typed") {
+    Arrangement translation_bound;
+    // Anchor pinned to the minimum x edge of the lattice: t = a0 - b1 underflows.
+    const auto low = translation_bound.try_insert(place(square4(), INT64_MIN, 0)).value();
+    const OrientedPrototile square = reference_orientation(square4());
+    auto underflow = translation_bound.preview_join_full_edges(
+        low,
+        find_edge(
+            translation_bound.entries().front().placement.footprint(),
+            raw(INT64_MIN, 4),
+            raw(INT64_MIN, 0)),
+        square,
+        find_edge(square.canonical_polygon(), raw(4, 0), raw(4, 4)));
+    CHECK(underflow.has_value() == false);
+    CHECK(underflow.error().code == JoinErrorCode::translation_overflow);
+    CHECK(translation_bound.entries().size() == 1);
+
+    Arrangement footprint_bound;
+    // A 2x2 anchor whose top edge sits at the top of the range. Mating a
+    // 2-wide, 4-tall candidate onto it derives a representable translation whose
+    // footprint nonetheless reaches past INT64_MAX.
+    const auto high = footprint_bound.try_insert(place(square2(), 0, INT64_MAX - 3)).value();
+    const OrientedPrototile tall = reference_orientation(rect2x4());
+    auto overflow = footprint_bound.preview_join_full_edges(
+        high,
+        find_edge(
+            footprint_bound.entries().front().placement.footprint(),
+            raw(2, INT64_MAX - 1),
+            raw(0, INT64_MAX - 1)),
+        tall,
+        find_edge(tall.canonical_polygon(), raw(0, 0), raw(2, 0)));
+    CHECK(overflow.has_value() == false);
+    CHECK(overflow.error().code == JoinErrorCode::footprint_overflow);
+    CHECK(footprint_bound.entries().size() == 1);
+}
+
+TEST_CASE("full-edge preview names the same conflicting placement as mutation") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(c_shape(), 0, 0)).value();
+    const auto blocker = arrangement.try_insert(place(square2(), 7, 4)).value();
+    const Polygon &anchor_footprint = arrangement.entries().front().placement.footprint();
+
+    // A candidate rising out of the C's cavity overlaps the anchor itself.
+    const OrientedPrototile square = reference_orientation(square4());
+    const EdgeIndex cavity_floor = find_edge(anchor_footprint, raw(6, 2), raw(2, 2));
+    const EdgeIndex square_bottom =
+        find_edge(square.canonical_polygon(), raw(0, 0), raw(4, 0));
+
+    auto previewed_anchor_conflict =
+        arrangement.preview_join_full_edges(anchor, cavity_floor, square, square_bottom);
+    CHECK(previewed_anchor_conflict.has_value() == false);
+    CHECK(previewed_anchor_conflict.error().code == JoinErrorCode::interior_overlap);
+    CHECK(previewed_anchor_conflict.error().conflicting_placement.value() == anchor);
+
+    // A candidate clearing the anchor still overlaps the blocker, and preview
+    // names the blocker exactly as insertion does.
+    const OrientedPrototile small = reference_orientation(square2());
+    const EdgeIndex prong = find_edge(anchor_footprint, raw(6, 4), raw(6, 6));
+    const EdgeIndex small_left = find_edge(small.canonical_polygon(), raw(0, 2), raw(0, 0));
+
+    auto previewed_blocker_conflict =
+        arrangement.preview_join_full_edges(anchor, prong, small, small_left);
+    CHECK(previewed_blocker_conflict.has_value() == false);
+    CHECK(previewed_blocker_conflict.error().code == JoinErrorCode::interior_overlap);
+    CHECK(previewed_blocker_conflict.error().conflicting_placement.value() == blocker);
+
+    // The mutating verb reaches the identical verdict and conflict identity.
+    auto joined = arrangement.try_join_full_edges(anchor, prong, small, small_left);
+    CHECK(joined.has_value() == false);
+    CHECK(joined.error().code == previewed_blocker_conflict.error().code);
+    CHECK(joined.error().conflicting_placement.value() == blocker);
+
+    CHECK(arrangement.entries().size() == 2);
+    CHECK(arrangement.next_id().value() == PlacementId(2));
+}
+
+TEST_CASE("full-edge preview reports identifier exhaustion without mutation") {
+    Arrangement arrangement = Arrangement::testing_with_next_id(UINT64_MAX);
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    CHECK(anchor == PlacementId(UINT64_MAX));
+    CHECK(arrangement.next_id().has_value() == false);
+
+    // A geometrically legal mating with no id left to allocate.
+    const OrientedPrototile candidate = reference_orientation(square4());
+    auto previewed = arrangement.preview_join_full_edges(
+        anchor,
+        find_edge(
+            arrangement.entries().front().placement.footprint(), raw(0, 0), raw(4, 0)),
+        candidate,
+        find_edge(candidate.canonical_polygon(), raw(4, 4), raw(0, 4)));
+    CHECK(previewed.has_value() == false);
+    CHECK(previewed.error().code == JoinErrorCode::identifier_exhausted);
+    CHECK(previewed.error().conflicting_placement.has_value() == false);
+    CHECK(arrangement.entries().size() == 1);
 }

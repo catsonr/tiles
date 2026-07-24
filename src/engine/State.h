@@ -2,6 +2,7 @@
 
 #include "core/Arrangement.h"
 #include "core/OrientedPrototile.h"
+#include "core/Placement.h"
 #include "core/Result.h"
 #include "engine/Commands.h"
 #include "engine/Palette.h"
@@ -46,6 +47,21 @@ public:
 
     // Mate a selected anchor footprint vertex with a selected candidate vertex.
     Result<PlacementId, MateCommandError> apply(const MateVerticesCommand &p_command);
+
+    // Derive the exact placement the corresponding apply would insert, without
+    // mutating anything. Candidate resolution, supply enforcement, and their
+    // established precedence are shared with apply, and the core's typed failure
+    // is preserved unchanged.
+    //
+    // Preview consumes neither supply nor a placement id: supply is derived from
+    // arrangement contents, which only a successful apply changes. So while the
+    // state is otherwise unmodified, repeated previews are identical, and a
+    // successful preview implies that an immediate matching apply succeeds and
+    // stores exactly that geometry. Across an intervening mutation it promises
+    // nothing.
+    Result<Placement, MateCommandError> preview(const MateFullEdgesCommand &p_command) const;
+
+    Result<Placement, MateCommandError> preview(const MateVerticesCommand &p_command) const;
 
 private:
     // Resolve one palette-authored oriented candidate and enforce its configured

@@ -64,20 +64,28 @@ std::optional<PlacementId> Arrangement::next_id() const {
     return PlacementId(next_id_);
 }
 
-Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placement) {
+std::optional<ArrangementError> Arrangement::reject_insertion(
+    const Placement &p_placement) const {
     // Compare the candidate footprint against every existing footprint. A single
     // positive-area interior overlap rejects the insertion and names the
     // conflicting placement.
     for (const Entry &entry : entries_) {
         if (interiors_overlap(p_placement.footprint(), entry.placement.footprint())) {
-            return Result<PlacementId, ArrangementError>::failure(
-                ArrangementError { ArrangementErrorCode::interior_overlap, entry.id });
+            return ArrangementError { ArrangementErrorCode::interior_overlap, entry.id };
         }
     }
 
     if (exhausted_) {
-        return Result<PlacementId, ArrangementError>::failure(
-            ArrangementError { ArrangementErrorCode::identifier_exhausted, std::nullopt });
+        return ArrangementError { ArrangementErrorCode::identifier_exhausted, std::nullopt };
+    }
+
+    return std::nullopt;
+}
+
+Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placement) {
+    const std::optional<ArrangementError> rejection = reject_insertion(p_placement);
+    if (rejection.has_value()) {
+        return Result<PlacementId, ArrangementError>::failure(rejection.value());
     }
 
     // The candidate is interior-disjoint from every existing entry, so appending
@@ -94,9 +102,9 @@ Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placem
 
 namespace {
 
-// The independent whole-footprint proof lives in try_insert; it is also the only
-// place that mutates state, so routing every derived candidate through it keeps
-// a failed join fully transactional.
+// The independent whole-footprint proof lives in reject_insertion, and
+// try_insert remains the only place that mutates state, so routing every derived
+// candidate through it keeps a failed join fully transactional.
 const Entry *find_anchor(const std::vector<Entry> &p_entries, PlacementId p_anchor) {
     for (const Entry &entry : p_entries) {
         if (entry.id == p_anchor) {
@@ -108,27 +116,80 @@ const Entry *find_anchor(const std::vector<Entry> &p_entries, PlacementId p_anch
 
 } // namespace
 
-Result<PlacementId, JoinError> Arrangement::try_join_full_edges(
+Result<Placement, JoinError> Arrangement::preview_join_full_edges(
     PlacementId p_anchor,
     EdgeIndex p_anchor_edge,
     const OrientedPrototile &p_candidate,
-    EdgeIndex p_candidate_edge) {
-    // Resolve the anchor placement. Its footprint is read only during alignment,
-    // which completes before any insertion mutates the entry storage.
+    EdgeIndex p_candidate_edge) const {
+    // Resolve the anchor placement. Its footprint is read only here, and this
+    // whole operation is const, so no caller can observe a difference between a
+    // successful and a failed preview.
     const Entry *anchor = find_anchor(entries_, p_anchor);
     if (anchor == nullptr) {
-        return Result<PlacementId, JoinError>::failure(
+        return Result<Placement, JoinError>::failure(
             JoinError { JoinErrorCode::anchor_not_found, std::nullopt });
     }
 
     auto aligned = align_full_edge(
         anchor->placement.footprint(), p_anchor_edge, p_candidate, p_candidate_edge);
     if (!aligned.has_value()) {
-        return Result<PlacementId, JoinError>::failure(
+        return Result<Placement, JoinError>::failure(
             JoinError { join_code_from_alignment(aligned.error()), std::nullopt });
     }
 
-    auto inserted = try_insert(std::move(aligned).value());
+    const std::optional<ArrangementError> rejection = reject_insertion(aligned.value());
+    if (rejection.has_value()) {
+        return Result<Placement, JoinError>::failure(
+            join_error_from_arrangement(rejection.value()));
+    }
+
+    return Result<Placement, JoinError>::success(std::move(aligned).value());
+}
+
+Result<Placement, JoinError> Arrangement::preview_join_vertices(
+    PlacementId p_anchor,
+    VertexIndex p_anchor_vertex,
+    const OrientedPrototile &p_candidate,
+    VertexIndex p_candidate_vertex) const {
+    const Entry *anchor = find_anchor(entries_, p_anchor);
+    if (anchor == nullptr) {
+        return Result<Placement, JoinError>::failure(
+            JoinError { JoinErrorCode::anchor_not_found, std::nullopt });
+    }
+
+    auto aligned = align_vertex(
+        anchor->placement.footprint(), p_anchor_vertex, p_candidate, p_candidate_vertex);
+    if (!aligned.has_value()) {
+        return Result<Placement, JoinError>::failure(
+            JoinError { join_code_from_vertex_alignment(aligned.error()), std::nullopt });
+    }
+
+    const std::optional<ArrangementError> rejection = reject_insertion(aligned.value());
+    if (rejection.has_value()) {
+        return Result<Placement, JoinError>::failure(
+            join_error_from_arrangement(rejection.value()));
+    }
+
+    return Result<Placement, JoinError>::success(std::move(aligned).value());
+}
+
+Result<PlacementId, JoinError> Arrangement::try_join_full_edges(
+    PlacementId p_anchor,
+    EdgeIndex p_anchor_edge,
+    const OrientedPrototile &p_candidate,
+    EdgeIndex p_candidate_edge) {
+    // Anchor resolution, alignment, and both insertion conditions all belong to
+    // the preview above; there is no second derivation or validation here. The
+    // preview's placement then flows through the one operation that mutates, so
+    // insertion remains the sole invariant-preserving path and re-proves the two
+    // cheap conditions rather than trusting an unchecked seam.
+    auto previewed = preview_join_full_edges(
+        p_anchor, p_anchor_edge, p_candidate, p_candidate_edge);
+    if (!previewed.has_value()) {
+        return Result<PlacementId, JoinError>::failure(previewed.error());
+    }
+
+    auto inserted = try_insert(std::move(previewed).value());
     if (!inserted.has_value()) {
         return Result<PlacementId, JoinError>::failure(
             join_error_from_arrangement(inserted.error()));
@@ -141,20 +202,13 @@ Result<PlacementId, JoinError> Arrangement::try_join_vertices(
     VertexIndex p_anchor_vertex,
     const OrientedPrototile &p_candidate,
     VertexIndex p_candidate_vertex) {
-    const Entry *anchor = find_anchor(entries_, p_anchor);
-    if (anchor == nullptr) {
-        return Result<PlacementId, JoinError>::failure(
-            JoinError { JoinErrorCode::anchor_not_found, std::nullopt });
+    auto previewed = preview_join_vertices(
+        p_anchor, p_anchor_vertex, p_candidate, p_candidate_vertex);
+    if (!previewed.has_value()) {
+        return Result<PlacementId, JoinError>::failure(previewed.error());
     }
 
-    auto aligned = align_vertex(
-        anchor->placement.footprint(), p_anchor_vertex, p_candidate, p_candidate_vertex);
-    if (!aligned.has_value()) {
-        return Result<PlacementId, JoinError>::failure(
-            JoinError { join_code_from_vertex_alignment(aligned.error()), std::nullopt });
-    }
-
-    auto inserted = try_insert(std::move(aligned).value());
+    auto inserted = try_insert(std::move(previewed).value());
     if (!inserted.has_value()) {
         return Result<PlacementId, JoinError>::failure(
             join_error_from_arrangement(inserted.error()));

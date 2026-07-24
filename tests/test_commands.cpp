@@ -966,3 +966,320 @@ TEST_CASE("exact placement creates legal partial-edge contact that no mating der
     CHECK(state.arrangement().entries().size() == 2);
     CHECK(state.arrangement().next_id().value() == PlacementId(2));
 }
+
+// ---------------------------------------------------------------------------
+// mating preview
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The o tetromino's opposite complete edges: edge 0 runs (0,0)->(2,0) and edge 2
+// runs (2,2)->(0,2), so mating them drops a second square exactly below.
+MateFullEdgesCommand mate_below(PlacementId p_anchor) {
+    return MateFullEdgesCommand {
+        p_anchor,
+        EdgeIndex(0),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(2),
+    };
+}
+
+// Anchor corner (2,2) against the candidate's local origin: legal isolated point
+// contact.
+MateVerticesCommand mate_at_corner(PlacementId p_anchor) {
+    return MateVerticesCommand {
+        p_anchor,
+        VertexIndex(2),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        VertexIndex(0),
+    };
+}
+
+bool same_geometry(const Placement &p_lhs, const Placement &p_rhs) {
+    return p_lhs.prototile().id() == p_rhs.prototile().id()
+        && p_lhs.orientation() == p_rhs.orientation()
+        && p_lhs.translation() == p_rhs.translation()
+        && p_lhs.footprint().vertices() == p_rhs.footprint().vertices();
+}
+
+} // namespace
+
+TEST_CASE("mating preview resolves the palette candidate and derives the exact placement") {
+    State state = square_state(Supply::unlimited());
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
+        return;
+    }
+
+    // Deliberately through a const reference: preview is an observation.
+    const State &observed = state;
+
+    auto edges = observed.preview(mate_below(anchor.value()));
+    CHECK(bool(edges));
+    if (edges) {
+        // The identity and orientation are the palette-owned selected ones, and
+        // the translation is the exact one the core derived.
+        CHECK(edges.value().prototile().id() == PrototileId(1));
+        CHECK(edges.value().orientation() == R);
+        CHECK(edges.value().translation() == unit(0, -2));
+        CHECK(has_vertex(edges.value().footprint(), unit(0, 0)));
+        CHECK(has_vertex(edges.value().footprint(), unit(2, 0)));
+    }
+
+    auto vertices = observed.preview(mate_at_corner(anchor.value()));
+    CHECK(bool(vertices));
+    if (vertices) {
+        CHECK(vertices.value().prototile().id() == PrototileId(1));
+        CHECK(vertices.value().translation() == unit(2, 2));
+    }
+
+    // Neither preview touched a single observable value.
+    CHECK(state.arrangement().entries().size() == 1);
+    CHECK(state.arrangement().next_id().value() == PlacementId(1));
+    CHECK(state.palette().order() == 1);
+}
+
+TEST_CASE("a successful preview consumes neither finite supply nor a placement id") {
+    // Exactly one piece configured, and the anchor already uses it up... except
+    // that supply is derived from arrangement contents, which preview cannot
+    // change. So two pieces are configured and one is spent on the anchor.
+    State state = square_state(Supply::finite(2).value());
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
+        return;
+    }
+
+    const std::size_t before_size = state.arrangement().entries().size();
+    const PlacementId before_next = state.arrangement().next_id().value();
+
+    // Repeated previews of the same command stay successful and identical while
+    // the state is unmodified.
+    auto first = state.preview(mate_below(anchor.value()));
+    auto second = state.preview(mate_below(anchor.value()));
+    auto third = state.preview(mate_at_corner(anchor.value()));
+    CHECK(bool(first));
+    CHECK(bool(second));
+    CHECK(bool(third));
+    if (!first || !second) {
+        return;
+    }
+    CHECK(same_geometry(first.value(), second.value()));
+
+    CHECK(state.arrangement().entries().size() == before_size);
+    CHECK(state.arrangement().next_id().value() == before_next);
+
+    // The second configured piece is still available to an actual apply, which
+    // proves no preview spent it.
+    auto applied = state.apply(mate_below(anchor.value()));
+    CHECK(bool(applied));
+    if (applied) {
+        CHECK(applied.value() == PlacementId(1));
+    }
+    // And only now, with both pieces in the arrangement, is capacity used up.
+    auto exhausted = state.preview(mate_at_corner(anchor.value()));
+    CHECK(!exhausted);
+    if (!exhausted) {
+        CHECK(is_candidate(exhausted.error(), CandidateError::supply_exhausted));
+    }
+}
+
+TEST_CASE("a successful preview and an immediate apply agree exactly") {
+    auto built = tiles::engine::make_tetromino_state();
+    CHECK(bool(built));
+    if (!built) {
+        return;
+    }
+    State state = std::move(built).value();
+
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
+        return;
+    }
+
+    auto previewed = state.preview(mate_below(anchor.value()));
+    CHECK(bool(previewed));
+    if (!previewed) {
+        return;
+    }
+
+    auto applied = state.apply(mate_below(anchor.value()));
+    CHECK(bool(applied));
+    if (!applied) {
+        return;
+    }
+
+    // The stored entry the returned id names carries the previewed geometry:
+    // same prototile identity, orientation, translation, and footprint.
+    const Entry &stored = state.arrangement().entries().back();
+    CHECK(stored.id == applied.value());
+    CHECK(same_geometry(stored.placement, previewed.value()));
+}
+
+TEST_CASE("preview retains the candidate precedence entry, orientation, then supply") {
+    State state = square_state(Supply::unlimited());
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+
+    // Every core failure is simultaneously available, yet candidate resolution
+    // answers first and no JoinError is published — exactly as apply behaves.
+    auto bad_entry = state.preview(MateFullEdgesCommand {
+        PlacementId(999),
+        EdgeIndex(99),
+        PaletteEntryIndex(9),
+        PaletteOrientationIndex(9),
+        EdgeIndex(99),
+    });
+    CHECK(!bad_entry);
+    if (!bad_entry) {
+        CHECK(is_candidate(bad_entry.error(), CandidateError::palette_entry_out_of_range));
+        CHECK(std::get_if<JoinError>(&bad_entry.error()) == nullptr);
+    }
+
+    auto bad_orientation = state.preview(MateVerticesCommand {
+        PlacementId(999),
+        VertexIndex(99),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(9),
+        VertexIndex(99),
+    });
+    CHECK(!bad_orientation);
+    if (!bad_orientation) {
+        CHECK(is_candidate(bad_orientation.error(), CandidateError::orientation_out_of_range));
+        CHECK(std::get_if<JoinError>(&bad_orientation.error()) == nullptr);
+    }
+
+    // Supply comes last, and equally before any core mating.
+    State finite = square_state(Supply::finite(1).value());
+    auto used = finite.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(used));
+    if (!used) {
+        return;
+    }
+    auto spent = finite.preview(mate_below(used.value()));
+    CHECK(!spent);
+    if (!spent) {
+        CHECK(is_candidate(spent.error(), CandidateError::supply_exhausted));
+        CHECK(std::get_if<JoinError>(&spent.error()) == nullptr);
+    }
+    CHECK(finite.arrangement().entries().size() == 1);
+}
+
+TEST_CASE("a failed preview preserves the complete core JoinError and changes nothing") {
+    State state = square_state(Supply::unlimited());
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
+        return;
+    }
+    auto blocker = state.apply(place_at(0, 0, unit(2, 0)));
+    CHECK(bool(blocker));
+    if (!blocker) {
+        return;
+    }
+
+    const std::size_t before_size = state.arrangement().entries().size();
+    const PlacementId before_next = state.arrangement().next_id().value();
+
+    // An overlap preview names the conflicting placement, not just a code.
+    auto overlapped = state.preview(MateFullEdgesCommand {
+        anchor.value(),
+        EdgeIndex(1),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(3),
+    });
+    CHECK(!overlapped);
+    if (!overlapped) {
+        const JoinError *error = std::get_if<JoinError>(&overlapped.error());
+        CHECK(error != nullptr);
+        if (error != nullptr) {
+            CHECK(error->code == JoinErrorCode::interior_overlap);
+            CHECK(error->conflicting_placement.value() == blocker.value());
+        }
+    }
+
+    // Two same-direction edges carry no conflict identity.
+    auto incompatible = state.preview(MateFullEdgesCommand {
+        anchor.value(),
+        EdgeIndex(0),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(0),
+    });
+    CHECK(!incompatible);
+    if (!incompatible) {
+        const JoinError *error = std::get_if<JoinError>(&incompatible.error());
+        CHECK(error != nullptr);
+        if (error != nullptr) {
+            CHECK(error->code == JoinErrorCode::incompatible_edges);
+            CHECK(error->conflicting_placement.has_value() == false);
+        }
+    }
+
+    auto missing = state.preview(mate_below(PlacementId(999)));
+    CHECK(!missing);
+    if (!missing) {
+        const JoinError *error = std::get_if<JoinError>(&missing.error());
+        CHECK(error != nullptr && error->code == JoinErrorCode::anchor_not_found);
+    }
+
+    auto bad_vertex = state.preview(MateVerticesCommand {
+        anchor.value(),
+        VertexIndex(4),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        VertexIndex(0),
+    });
+    CHECK(!bad_vertex);
+    if (!bad_vertex) {
+        const JoinError *error = std::get_if<JoinError>(&bad_vertex.error());
+        CHECK(error != nullptr && error->code == JoinErrorCode::anchor_vertex_out_of_range);
+    }
+
+    CHECK(state.arrangement().entries().size() == before_size);
+    CHECK(state.arrangement().next_id().value() == before_next);
+    CHECK(state.arrangement().entries()[0].id == anchor.value());
+    CHECK(state.arrangement().entries()[1].id == blocker.value());
+}
+
+TEST_CASE("preview uses the selected distinct orientation, not merely the entry") {
+    std::vector<PaletteEntry> entries;
+    entries.push_back(make_entry(bar(9), Supply::unlimited(), { R, Q, H, T }));
+    State state(palette_of(std::move(entries)), Arrangement());
+    CHECK(state.palette().entries()[0].orientations().size() == 2);
+
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
+        return;
+    }
+
+    // The anchor bar lies flat over [0,4]x[0,1]; its vertex 1 is the corner
+    // (4,0), so an upright candidate mated there stands clear of it.
+    const Placement &placed = state.arrangement().entries().front().placement;
+    CHECK(placed.footprint().vertices().size() == 4);
+    CHECK(placed.footprint().vertices()[1] == unit(4, 0));
+    const VertexIndex corner = VertexIndex(1);
+
+    auto upright = state.preview(MateVerticesCommand {
+        anchor.value(),
+        corner,
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(1),
+        VertexIndex(0),
+    });
+    CHECK(bool(upright));
+    if (!upright) {
+        return;
+    }
+    CHECK(upright.value().orientation() == Q);
+    CHECK(upright.value().prototile().id() == PrototileId(9));
+    // The quarter turn stands the 4x1 bar upright: the preview carries the
+    // selected distinct geometry, not the entry's first variant.
+    CHECK(extent(upright.value().oriented_polygon())
+        == std::make_pair(Coordinate::SCALE, 4 * Coordinate::SCALE));
+}

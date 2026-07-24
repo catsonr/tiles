@@ -70,6 +70,15 @@ bool footprint_has_vertex(const Placement &p_placement, Point p_point) {
     return false;
 }
 
+// Complete physical identity of two placements: prototile, orientation, exact
+// translation, and the whole ordered footprint boundary.
+bool same_geometry(const Placement &p_lhs, const Placement &p_rhs) {
+    return p_lhs.prototile().id() == p_rhs.prototile().id()
+        && p_lhs.orientation() == p_rhs.orientation()
+        && p_lhs.translation() == p_rhs.translation()
+        && p_lhs.footprint().vertices() == p_rhs.footprint().vertices();
+}
+
 } // namespace
 
 TEST_CASE("vertex join with legal isolated point contact succeeds") {
@@ -311,4 +320,179 @@ TEST_CASE("a failed vertex join leaves entries, ordering, ids, and the allocator
     CHECK(arrangement.next_id().value() == before_next);
     CHECK(arrangement.entries()[0].id == id0);
     CHECK(arrangement.entries()[1].id == id1);
+}
+
+// ---------------------------------------------------------------------------
+// vertex preview
+// ---------------------------------------------------------------------------
+
+TEST_CASE("vertex preview returns the exact placement without mutating anything") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square2(), 0, 0)).value();
+    const VertexIndex anchor_vertex =
+        find_vertex(arrangement.entries().front().placement.footprint(), raw(2, 2));
+    const OrientedPrototile candidate = reference_orientation(square2());
+    const VertexIndex candidate_vertex =
+        find_vertex(candidate.canonical_polygon(), raw(0, 0));
+
+    const std::size_t before_size = arrangement.entries().size();
+    const PlacementId before_next = arrangement.next_id().value();
+    const Polygon::Vertices before_candidate = candidate.canonical_polygon().vertices();
+
+    // Deliberately through a const reference: preview is an observation.
+    const Arrangement &observed = arrangement;
+    auto previewed =
+        observed.preview_join_vertices(anchor, anchor_vertex, candidate, candidate_vertex);
+    CHECK(previewed.has_value());
+    if (!previewed) {
+        return;
+    }
+
+    // The isolated point contact this act deliberately keeps available.
+    CHECK(previewed.value().translation() == raw(2, 2));
+    CHECK(previewed.value().prototile().id() == PrototileId(2));
+    CHECK(previewed.value().orientation() == Orientation::reference());
+    CHECK(footprint_has_vertex(previewed.value(), raw(2, 2)));
+    CHECK(footprint_has_vertex(previewed.value(), raw(4, 4)));
+
+    CHECK(arrangement.entries().size() == before_size);
+    CHECK(arrangement.entries().front().id == anchor);
+    CHECK(arrangement.next_id().value() == before_next);
+    CHECK(candidate.orientation() == Orientation::reference());
+    CHECK(candidate.canonical_polygon().vertices() == before_candidate);
+}
+
+TEST_CASE("repeated vertex preview is identical and agrees with an immediate join") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(c_shape(), 0, 0)).value();
+    // The back-of-cavity corner: a vertex mating that yields several contacts.
+    const VertexIndex anchor_vertex =
+        find_vertex(arrangement.entries().front().placement.footprint(), raw(2, 2));
+    const OrientedPrototile candidate = reference_orientation(square2());
+    const VertexIndex candidate_vertex =
+        find_vertex(candidate.canonical_polygon(), raw(0, 0));
+
+    auto first =
+        arrangement.preview_join_vertices(anchor, anchor_vertex, candidate, candidate_vertex);
+    auto second =
+        arrangement.preview_join_vertices(anchor, anchor_vertex, candidate, candidate_vertex);
+    CHECK(first.has_value());
+    CHECK(second.has_value());
+    if (!first || !second) {
+        return;
+    }
+    CHECK(same_geometry(first.value(), second.value()));
+
+    auto joined =
+        arrangement.try_join_vertices(anchor, anchor_vertex, candidate, candidate_vertex);
+    CHECK(joined.has_value());
+    if (!joined) {
+        return;
+    }
+    CHECK(arrangement.entries().size() == 2);
+    CHECK(arrangement.entries().back().id == joined.value());
+    CHECK(same_geometry(arrangement.entries().back().placement, first.value()));
+}
+
+TEST_CASE("vertex preview retains anchor and vertex precedence") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square2(), 0, 0)).value();
+    const VertexIndex good =
+        find_vertex(arrangement.entries().front().placement.footprint(), raw(0, 0));
+    const OrientedPrototile candidate = reference_orientation(square2());
+
+    auto missing = arrangement.preview_join_vertices(
+        PlacementId(999), VertexIndex(50), candidate, VertexIndex(50));
+    CHECK(missing.has_value() == false);
+    CHECK(missing.error().code == JoinErrorCode::anchor_not_found);
+
+    auto bad_anchor =
+        arrangement.preview_join_vertices(anchor, VertexIndex(99), candidate, good);
+    CHECK(bad_anchor.has_value() == false);
+    CHECK(bad_anchor.error().code == JoinErrorCode::anchor_vertex_out_of_range);
+
+    auto bad_candidate =
+        arrangement.preview_join_vertices(anchor, good, candidate, VertexIndex(99));
+    CHECK(bad_candidate.has_value() == false);
+    CHECK(bad_candidate.error().code == JoinErrorCode::candidate_vertex_out_of_range);
+
+    CHECK(arrangement.entries().size() == 1);
+    CHECK(arrangement.next_id().value() == PlacementId(1));
+}
+
+TEST_CASE("vertex preview keeps translation and footprint overflow typed") {
+    Arrangement translation_bound;
+    const auto low = translation_bound.try_insert(place(square2(), INT64_MIN, 0)).value();
+    const OrientedPrototile candidate = reference_orientation(square2());
+    auto underflow = translation_bound.preview_join_vertices(
+        low,
+        find_vertex(
+            translation_bound.entries().front().placement.footprint(), raw(INT64_MIN, 0)),
+        candidate,
+        find_vertex(candidate.canonical_polygon(), raw(2, 0)));
+    CHECK(underflow.has_value() == false);
+    CHECK(underflow.error().code == JoinErrorCode::translation_overflow);
+    CHECK(translation_bound.entries().size() == 1);
+
+    Arrangement footprint_bound;
+    const auto high = footprint_bound.try_insert(place(square2(), INT64_MAX - 3, 0)).value();
+    auto overflow = footprint_bound.preview_join_vertices(
+        high,
+        find_vertex(
+            footprint_bound.entries().front().placement.footprint(), raw(INT64_MAX - 1, 0)),
+        candidate,
+        find_vertex(candidate.canonical_polygon(), raw(0, 0)));
+    CHECK(overflow.has_value() == false);
+    CHECK(overflow.error().code == JoinErrorCode::footprint_overflow);
+    CHECK(footprint_bound.entries().size() == 1);
+}
+
+TEST_CASE("vertex preview names the same conflicting placement as mutation") {
+    Arrangement arrangement;
+    const auto anchor = arrangement.try_insert(place(square4(), 0, 0)).value();
+    const auto blocker = arrangement.try_insert(place(square2(), 5, 0)).value();
+    const Polygon &anchor_footprint = arrangement.entries().front().placement.footprint();
+    const OrientedPrototile candidate = reference_orientation(square4());
+    const VertexIndex candidate_origin =
+        find_vertex(candidate.canonical_polygon(), raw(0, 0));
+
+    // t = 0 lands the candidate exactly on the anchor.
+    auto onto_anchor = arrangement.preview_join_vertices(
+        anchor, find_vertex(anchor_footprint, raw(0, 0)), candidate, candidate_origin);
+    CHECK(onto_anchor.has_value() == false);
+    CHECK(onto_anchor.error().code == JoinErrorCode::interior_overlap);
+    CHECK(onto_anchor.error().conflicting_placement.value() == anchor);
+
+    // Clearing the anchor, the candidate still covers the blocker.
+    const VertexIndex corner = find_vertex(anchor_footprint, raw(4, 0));
+    auto onto_blocker =
+        arrangement.preview_join_vertices(anchor, corner, candidate, candidate_origin);
+    CHECK(onto_blocker.has_value() == false);
+    CHECK(onto_blocker.error().code == JoinErrorCode::interior_overlap);
+    CHECK(onto_blocker.error().conflicting_placement.value() == blocker);
+
+    auto joined = arrangement.try_join_vertices(anchor, corner, candidate, candidate_origin);
+    CHECK(joined.has_value() == false);
+    CHECK(joined.error().code == onto_blocker.error().code);
+    CHECK(joined.error().conflicting_placement.value() == blocker);
+
+    CHECK(arrangement.entries().size() == 2);
+    CHECK(arrangement.next_id().value() == PlacementId(2));
+}
+
+TEST_CASE("vertex preview reports identifier exhaustion without mutation") {
+    Arrangement arrangement = Arrangement::testing_with_next_id(UINT64_MAX);
+    const auto anchor = arrangement.try_insert(place(square2(), 0, 0)).value();
+    CHECK(arrangement.next_id().has_value() == false);
+
+    const OrientedPrototile candidate = reference_orientation(square2());
+    auto previewed = arrangement.preview_join_vertices(
+        anchor,
+        find_vertex(arrangement.entries().front().placement.footprint(), raw(2, 2)),
+        candidate,
+        find_vertex(candidate.canonical_polygon(), raw(0, 0)));
+    CHECK(previewed.has_value() == false);
+    CHECK(previewed.error().code == JoinErrorCode::identifier_exhausted);
+    CHECK(previewed.error().conflicting_placement.has_value() == false);
+    CHECK(arrangement.entries().size() == 1);
 }
