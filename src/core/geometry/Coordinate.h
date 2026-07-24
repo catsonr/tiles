@@ -77,4 +77,8 @@ Result<Coordinate, QuantizationError> quantize_double(double p_value);
 Result<Coordinate, ArithmeticError> checked_add(Coordinate p_lhs, Coordinate p_rhs);
 Result<Coordinate, ArithmeticError> checked_subtract(Coordinate p_lhs, Coordinate p_rhs);
 
+// Checked negation. Negating INT64_MIN has no representable result and returns
+// ArithmeticError::overflow; it never wraps, saturates, throws, or invokes UB.
+Result<Coordinate, ArithmeticError> checked_negate(Coordinate p_value);
+
 } // namespace tiles

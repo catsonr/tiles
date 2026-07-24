@@ -3,6 +3,7 @@
 #include "core/geometry/Predicates.h"
 
 #include <algorithm>
+#include <cassert>
 #include <optional>
 
 namespace tiles {
@@ -198,6 +199,32 @@ Result<Polygon, PolygonError> Polygon::make(Vertices p_vertices) {
 
     return Result<Polygon, PolygonError>::success(
         Polygon(std::move(p_vertices), std::move(*triangulation)));
+}
+
+bool same_boundary(const Polygon &p_lhs, const Polygon &p_rhs) {
+    return p_lhs.vertices() == p_rhs.vertices();
+}
+
+Result<Polygon, ArithmeticError> translation_normalize(const Polygon &p_polygon) {
+    const Point origin = p_polygon.vertices().front();
+
+    Polygon::Vertices translated;
+    translated.reserve(p_polygon.vertices().size());
+    for (const Point &vertex : p_polygon.vertices()) {
+        auto shifted = checked_subtract(vertex, origin);
+        if (!shifted.has_value()) {
+            return Result<Polygon, ArithmeticError>::failure(shifted.error());
+        }
+        translated.push_back(shifted.value());
+    }
+
+    // Reconstruct through the validated factory rather than reaching into an
+    // incomplete polygon. The subtraction cannot break simplicity, the
+    // lexicographic minimum, winding, or triangulation topology, so this rebuild
+    // always succeeds for an already-valid polygon.
+    auto rebuilt = Polygon::make(std::move(translated));
+    assert(rebuilt.has_value());
+    return Result<Polygon, ArithmeticError>::success(std::move(rebuilt).value());
 }
 
 } // namespace tiles

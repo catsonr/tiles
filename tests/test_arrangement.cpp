@@ -11,6 +11,7 @@
 
 using namespace tiles;
 using tiles_test::raw_pt;
+using tiles_test::reference_orientation;
 
 namespace {
 
@@ -26,7 +27,7 @@ Prototile square() {
 
 // A 4x4 square placement whose lower-left corner is at (p_x, p_y).
 Placement square_at(std::int64_t p_x, std::int64_t p_y) {
-    auto placement = Placement::make(square(), raw(p_x, p_y));
+    auto placement = Placement::make(reference_orientation(square()), raw(p_x, p_y));
     return std::move(placement).value();
 }
 

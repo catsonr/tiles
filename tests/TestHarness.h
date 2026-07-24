@@ -1,11 +1,14 @@
 #pragma once
 
+#include "core/OrientedPrototile.h"
+#include "core/Prototile.h"
 #include "core/geometry/Point.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace tiles_test {
@@ -35,6 +38,16 @@ inline tiles::Point raw_pt(std::int64_t p_x, std::int64_t p_y) {
         tiles::Coordinate::from_raw(p_x),
         tiles::Coordinate::from_raw(p_y),
     };
+}
+
+// Compile the reference-only orientation of a prototile for concise fixtures.
+// The production API has no such implicit convenience: a placement always names
+// an explicit compiled orientation. This helper exists purely so behavioral
+// tests that predate orientations stay legible.
+inline tiles::OrientedPrototile reference_orientation(const tiles::Prototile &p_prototile) {
+    auto compiled = tiles::compile_lattice_orientations(
+        p_prototile, { tiles::Orientation::reference() });
+    return std::move(compiled).value().front();
 }
 
 } // namespace tiles_test

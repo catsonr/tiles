@@ -4,18 +4,18 @@
 
 namespace tiles {
 
-Placement::Placement(Prototile p_prototile, Point p_translation, Polygon p_footprint) :
-    prototile_(std::move(p_prototile)),
+Placement::Placement(OrientedPrototile p_oriented, Point p_translation, Polygon p_footprint) :
+    oriented_(std::move(p_oriented)),
     translation_(p_translation),
     footprint_(std::move(p_footprint)) {}
 
 Result<Placement, PlacementError> Placement::make(
-    const Prototile &p_prototile, Point p_translation) {
-    const Polygon::Vertices &canonical = p_prototile.polygon().vertices();
+    const OrientedPrototile &p_oriented, Point p_translation) {
+    const Polygon::Vertices &canonical = p_oriented.canonical_polygon().vertices();
 
-    // Checked-add the translation to every canonical vertex. Any component that
-    // leaves the lattice is a footprint overflow: the placement has no
-    // representable footprint and must not be published.
+    // Checked-add the translation to every oriented canonical vertex. Any
+    // component that leaves the lattice is a footprint overflow: the placement
+    // has no representable footprint and must not be published.
     Polygon::Vertices translated;
     translated.reserve(canonical.size());
     for (const Point &vertex : canonical) {
@@ -39,7 +39,7 @@ Result<Placement, PlacementError> Placement::make(
     }
 
     return Result<Placement, PlacementError>::success(
-        Placement(p_prototile, p_translation, std::move(footprint).value()));
+        Placement(p_oriented, p_translation, std::move(footprint).value()));
 }
 
 } // namespace tiles

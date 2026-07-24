@@ -120,6 +120,13 @@ Result<Coordinate, ArithmeticError> checked_subtract(Coordinate p_lhs, Coordinat
     return Result<Coordinate, ArithmeticError>::success(Coordinate::from_raw(result));
 }
 
+Result<Coordinate, ArithmeticError> checked_negate(Coordinate p_value) {
+    if (p_value.raw() == INT64_MIN) {
+        return Result<Coordinate, ArithmeticError>::failure(ArithmeticError::overflow);
+    }
+    return Result<Coordinate, ArithmeticError>::success(Coordinate::from_raw(-p_value.raw()));
+}
+
 Result<Point, ArithmeticError> checked_add(Point p_lhs, Point p_rhs) {
     auto x = checked_add(p_lhs.x, p_rhs.x);
     if (!x.has_value()) {

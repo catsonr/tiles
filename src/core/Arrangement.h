@@ -63,6 +63,8 @@ enum class JoinErrorCode {
     anchor_not_found,
     anchor_edge_out_of_range,
     candidate_edge_out_of_range,
+    anchor_vertex_out_of_range,
+    candidate_vertex_out_of_range,
     incompatible_edges,
     translation_overflow,
     footprint_overflow,
@@ -100,14 +102,25 @@ public:
     // failure the arrangement is left completely unchanged.
     Result<PlacementId, ArrangementError> try_insert(Placement p_placement);
 
-    // Derive a candidate placement by mating the anchor's edge with the
-    // candidate prototile's edge, then insert it. Transactional: a failure at
-    // any stage leaves entries, ids, ordering, and the allocator unchanged.
-    Result<PlacementId, JoinError> try_join(
+    // Derive a candidate placement by mating a complete anchor footprint edge
+    // with a complete oriented candidate edge, then insert it. Transactional: a
+    // failure at any stage leaves entries, ids, ordering, and the allocator
+    // unchanged.
+    Result<PlacementId, JoinError> try_join_full_edges(
         PlacementId p_anchor,
         EdgeIndex p_anchor_edge,
-        const Prototile &p_candidate,
+        const OrientedPrototile &p_candidate,
         EdgeIndex p_candidate_edge);
+
+    // Derive a candidate placement by mating a selected anchor footprint vertex
+    // with a selected oriented candidate vertex, then insert it. Alignment
+    // proves only the selected vertex equality; the whole-footprint proof still
+    // lives in insertion. Transactional in the same way as the full-edge join.
+    Result<PlacementId, JoinError> try_join_vertices(
+        PlacementId p_anchor,
+        VertexIndex p_anchor_vertex,
+        const OrientedPrototile &p_candidate,
+        VertexIndex p_candidate_vertex);
 
     // Test-only construction seam: an empty arrangement whose id allocator
     // starts at p_next_id. It cannot produce an invalid arrangement (an empty

@@ -27,6 +27,23 @@ JoinErrorCode join_code_from_alignment(AlignmentError p_error) {
     return JoinErrorCode::footprint_construction_failed;
 }
 
+JoinErrorCode join_code_from_vertex_alignment(VertexAlignmentError p_error) {
+    switch (p_error) {
+        case VertexAlignmentError::anchor_vertex_out_of_range:
+            return JoinErrorCode::anchor_vertex_out_of_range;
+        case VertexAlignmentError::candidate_vertex_out_of_range:
+            return JoinErrorCode::candidate_vertex_out_of_range;
+        case VertexAlignmentError::translation_overflow:
+            return JoinErrorCode::translation_overflow;
+        case VertexAlignmentError::footprint_overflow:
+            return JoinErrorCode::footprint_overflow;
+        case VertexAlignmentError::footprint_construction_failed:
+            return JoinErrorCode::footprint_construction_failed;
+    }
+    // Unreachable: every VertexAlignmentError is mapped above.
+    return JoinErrorCode::footprint_construction_failed;
+}
+
 JoinError join_error_from_arrangement(const ArrangementError &p_error) {
     switch (p_error.code) {
         case ArrangementErrorCode::interior_overlap:
@@ -75,20 +92,30 @@ Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placem
     return Result<PlacementId, ArrangementError>::success(id);
 }
 
-Result<PlacementId, JoinError> Arrangement::try_join(
+namespace {
+
+// The independent whole-footprint proof lives in try_insert; it is also the only
+// place that mutates state, so routing every derived candidate through it keeps
+// a failed join fully transactional.
+const Entry *find_anchor(const std::vector<Entry> &p_entries, PlacementId p_anchor) {
+    for (const Entry &entry : p_entries) {
+        if (entry.id == p_anchor) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+Result<PlacementId, JoinError> Arrangement::try_join_full_edges(
     PlacementId p_anchor,
     EdgeIndex p_anchor_edge,
-    const Prototile &p_candidate,
+    const OrientedPrototile &p_candidate,
     EdgeIndex p_candidate_edge) {
     // Resolve the anchor placement. Its footprint is read only during alignment,
     // which completes before any insertion mutates the entry storage.
-    const Entry *anchor = nullptr;
-    for (const Entry &entry : entries_) {
-        if (entry.id == p_anchor) {
-            anchor = &entry;
-            break;
-        }
-    }
+    const Entry *anchor = find_anchor(entries_, p_anchor);
     if (anchor == nullptr) {
         return Result<PlacementId, JoinError>::failure(
             JoinError { JoinErrorCode::anchor_not_found, std::nullopt });
@@ -101,8 +128,32 @@ Result<PlacementId, JoinError> Arrangement::try_join(
             JoinError { join_code_from_alignment(aligned.error()), std::nullopt });
     }
 
-    // The independent whole-footprint proof lives in tryInsert; it is also the
-    // only place that mutates state, keeping a failed join fully transactional.
+    auto inserted = try_insert(std::move(aligned).value());
+    if (!inserted.has_value()) {
+        return Result<PlacementId, JoinError>::failure(
+            join_error_from_arrangement(inserted.error()));
+    }
+    return Result<PlacementId, JoinError>::success(inserted.value());
+}
+
+Result<PlacementId, JoinError> Arrangement::try_join_vertices(
+    PlacementId p_anchor,
+    VertexIndex p_anchor_vertex,
+    const OrientedPrototile &p_candidate,
+    VertexIndex p_candidate_vertex) {
+    const Entry *anchor = find_anchor(entries_, p_anchor);
+    if (anchor == nullptr) {
+        return Result<PlacementId, JoinError>::failure(
+            JoinError { JoinErrorCode::anchor_not_found, std::nullopt });
+    }
+
+    auto aligned = align_vertex(
+        anchor->placement.footprint(), p_anchor_vertex, p_candidate, p_candidate_vertex);
+    if (!aligned.has_value()) {
+        return Result<PlacementId, JoinError>::failure(
+            JoinError { join_code_from_vertex_alignment(aligned.error()), std::nullopt });
+    }
+
     auto inserted = try_insert(std::move(aligned).value());
     if (!inserted.has_value()) {
         return Result<PlacementId, JoinError>::failure(
