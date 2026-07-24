@@ -19,3 +19,6 @@ godot-project/.godot/
 
 # build outputs
 godot-project/bin/
+
+# native core test outputs
+build/

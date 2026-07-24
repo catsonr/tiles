@@ -56,3 +56,24 @@ library = env.SharedLibrary(
 )
 
 Default(library)
+
+# Native core tests: a dependency-free executable built from src/core/ and
+# tests/ with a plain toolchain environment, deliberately unaware of godot-cpp.
+# Invoke explicitly with `scons tests`; it is never part of the default build.
+# Object files use the default `.o` suffix, so they never collide with the
+# shared library's `.os` objects for the same core sources.
+test_env = Environment(tools=["default"])
+test_env.Append(CPPPATH=["src/"])
+test_env.Append(CXXFLAGS=["-std=c++17"])
+
+test_sources = []
+for tree in ("src/core", "tests"):
+    for root, _dirs, _files in sorted(os.walk(tree)):
+        test_sources += sorted(Glob(os.path.join(root, "*.cpp")))
+
+test_program = test_env.Program(
+    target="build/tests/tiles_core_tests",
+    source=test_sources,
+)
+
+test_env.Alias("tests", test_program)
