@@ -1,6 +1,6 @@
 #include "register_types.h"
 
-#include "nodes/GDExtensionSmokeTest.h"
+#include "game/Editor.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/defs.hpp>
@@ -11,7 +11,7 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
         return;
     }
 
-    GDREGISTER_CLASS(tiles::GDExtensionSmokeTest);
+    GDREGISTER_CLASS(tiles::game::Editor);
 }
 
 void uninitialize_tiles_module(godot::ModuleInitializationLevel p_level) {
