@@ -1,6 +1,5 @@
 #include "register_types.h"
 
-#include "game/Editor.h"
 #include "game/LevelEditor.h"
 #include "game/PrototilePreview.h"
 #include "game/resources/LevelResources.h"
@@ -34,10 +33,6 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     // before the main scene is instantiated.
     GDREGISTER_CLASS(tiles::game::PrototilePreview);
     GDREGISTER_CLASS(tiles::game::LevelEditor);
-
-    // The construction fixture. It is no longer in the main scene; act 2 consumes
-    // its useful player behaviour.
-    GDREGISTER_CLASS(tiles::game::Editor);
 }
 
 void uninitialize_tiles_module(godot::ModuleInitializationLevel p_level) {

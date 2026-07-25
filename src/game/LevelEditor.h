@@ -2,20 +2,21 @@
 
 #include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
-#include "core/Region.h"
+#include "core/Arrangement.h"
+#include "core/OrientedPrototile.h"
+#include "core/Placement.h"
+#include "engine/Blueprint.h"
 #include "engine/Palette.h"
-#include "game/resources/LevelResources.h"
+#include "engine/Supply.h"
 
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/check_box.hpp>
 #include <godot_cpp/classes/color_picker_button.hpp>
-#include <godot_cpp/classes/confirmation_dialog.hpp>
+#include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/control.hpp>
-#include <godot_cpp/classes/file_dialog.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/option_button.hpp>
-#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/spin_box.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -32,23 +33,26 @@ namespace tiles::game {
 
 class PrototilePreview;
 
-// The application's authoring surface: one Control which owns a canonical
-// catalog, one mutable LevelResource draft, the palette rows which rebuild that
-// draft's embedded palette, and the integer-grid region canvas which rebuilds
-// its region.
+// The application's one authoring surface: choose a geometry domain, lock one
+// exact palette, and construct one exact blueprint arrangement out of it.
+//
+// The document has exactly three phases and every one of them is derived from
+// what the document actually owns, so no phase field can disagree with the
+// state it describes:
+//
+//     no document                  choose_domain
+//     document without a palette   choose_palette
+//     document with a palette      build_blueprint
 //
 // The dependency direction is one-way. Authored Godot values are compiled into
-// exact values by the separate resource compiler and read back only for
-// presentation; no projected pixel, camera value, or rendered polygon ever
-// re-enters the model. The canvas projection is deliberately lossy: pointer
-// input becomes authoritative only after it has been snapped to an integer game
-// coordinate and stored as that integer.
+// exact values by the separate resource compiler and the blueprint compiler, and
+// read back only for presentation. No projected pixel, camera value, or rendered
+// polygon ever re-enters the model: the pointer only ranks already-exact
+// proposals and chooses already-stored record indices.
 //
-// The defining invariant is that every file this editor reports as saved was
-// successfully compiled as a complete LevelResource immediately before the save.
-// A proposed boundary which fails to compile never enters the active resource:
-// candidate resource graphs are built beside the live one and published only
-// after the exact compiler has proven them.
+// The record vector is the reconstructable authority and the arrangement is the
+// complete proof produced from it. They are published together, by one
+// transactional recompilation of the whole candidate, and never drift.
 class LevelEditor : public godot::Control {
     GDCLASS(LevelEditor, godot::Control)
 
@@ -56,41 +60,15 @@ protected:
     static void _bind_methods();
 
 public:
-    // One authored integer game coordinate. It is stored as an integer, not as
-    // a rendered Vector2 and not as a lattice value: the resource compiler
-    // remains the one q16.48 quantization boundary.
-    struct GridPoint final {
-        std::int64_t x = 0;
-        std::int64_t y = 0;
-
-        friend bool operator==(GridPoint p_lhs, GridPoint p_rhs) {
-            return p_lhs.x == p_rhs.x && p_lhs.y == p_rhs.y;
-        }
-
-        friend bool operator!=(GridPoint p_lhs, GridPoint p_rhs) {
-            return !(p_lhs == p_rhs);
-        }
-    };
-
-    enum class BoundaryKind {
-        outer_replacement,
-        new_hole,
-    };
-
-    // One nonempty-or-empty proposed boundary which has not been accepted. It is
-    // the only place an invalid proposal may exist: the active resource keeps
-    // its previous valid region untouched while a loop is open.
-    struct OpenLoop final {
-        BoundaryKind kind = BoundaryKind::outer_replacement;
-        std::vector<GridPoint> vertices;
-        // Set by a failed closure, cleared by any change to the points, because
-        // the diagnostic described an older proposal.
-        bool failed_closure = false;
+    enum class EditorPhase {
+        choose_domain,
+        choose_palette,
+        build_blueprint,
     };
 
     // The authoring view of one canonical catalog entry. Identity stays in the
-    // catalog: a row stores its index into the catalog's lattice domain view,
-    // never a copied id, name, or geometry.
+    // catalog: a row stores its index into the active domain's view, never a
+    // copied id, name, or geometry.
     struct PaletteRow final {
         std::size_t catalog_index = 0;
         bool included = false;
@@ -99,11 +77,20 @@ public:
         godot::Color color;
     };
 
-    // The pending file action a discard confirmation is guarding.
-    enum class PendingAction {
-        none,
-        new_level,
-        open_draft,
+    // One locked palette entry together with one of that entry's distinct
+    // compiled orientations. It has no empty or invalid meaning, so it is only
+    // ever held inside an optional; there is no sentinel index.
+    struct Selection final {
+        std::size_t entry = 0;
+        std::size_t orientation = 0;
+    };
+
+    // One currently offered addition: the exact record it would append, and the
+    // exact placement the arrangement's own preview derived for it. Both are
+    // authoritative; neither is reconstructed from a projected coordinate.
+    struct Proposal final {
+        engine::BlueprintPlacement record;
+        Placement placement;
     };
 
     void _ready() override;
@@ -117,62 +104,88 @@ public:
     // the UI callbacks call exactly these, and so does the headless runner, so
     // there is only one implementation of every rule below.
 
-    // Replace the active document with one new unsaved level owning an empty
-    // embedded palette and no region. Confirmation, if needed, happens before
-    // this is reached.
-    void install_new_document();
+    // Install one fresh palette-phase document in the named domain. A domain
+    // value outside the enumeration installs nothing at all.
+    bool choose_domain(content::GeometryDomain p_domain);
 
-    // Load one draft uncached and install it only if every required check
-    // succeeds. The current document is preserved exactly on every failure.
-    bool open_draft(const godot::String &p_path);
+    // Discard the entire document. There is no migration, conversion, retained
+    // palette, retained arrangement, or confirmation.
+    void return_to_domain_choice();
 
     void set_row_included(std::size_t p_row, bool p_included);
     void set_row_unlimited(std::size_t p_row, bool p_unlimited);
     void set_row_finite_amount(std::size_t p_row, std::int64_t p_amount);
     void set_row_color(std::size_t p_row, const godot::Color &p_color);
 
-    void begin_outer_loop();
-    void begin_hole_loop();
-    bool append_point(GridPoint p_point);
-    void remove_last_point();
-    void cancel_loop();
-    bool close_loop();
+    // Compile the rows into one exact palette and, only if that succeeds, lock
+    // it and enter blueprint phase with an empty blueprint. A failure leaves the
+    // document in palette phase, completely unchanged.
+    bool build_palette();
 
-    // Compile the complete resource and, only then, persist it. An empty path
-    // means "save to the resource's own path".
-    bool save_document(const godot::String &p_explicit_path);
+    void select_entry(std::size_t p_entry);
+    void cycle_entry(bool p_forward);
+    void cycle_orientation(bool p_forward);
 
-    // Compile the complete resource and, only then, emit play_requested with the
-    // exact current Ref. It never saves, clones, or clears dirty state.
-    bool request_play();
+    // Append the active proposal's record and publish the recompiled blueprint.
+    // Nothing changes at all when there is no active proposal, when the selected
+    // entry's finite supply is spent, or when the candidate fails to compile.
+    bool accept_active_proposal();
+
+    // Drop one stored record and publish the recompiled blueprint.
+    bool remove_record(std::size_t p_record);
+
+    void clear_blueprint();
+
+    // --- pointer, which is presentation only ---
+
+    // Record the last local pointer position and re-rank the cached proposals
+    // against it. Nothing here constructs or modifies geometry.
+    void set_pointer(godot::Vector2 p_local);
+    void clear_pointer();
+
+    // The topmost rendered stored placement containing a local pointer
+    // position, as a record index. Lossy: the test runs entirely in projected
+    // screen space and can only ever choose an index.
+    std::optional<std::size_t> record_at_local(godot::Vector2 p_local) const;
 
     // --- observation, for presentation and for the headless runner ---
 
-    bool has_document() const {
-        return document_.has_value();
+    EditorPhase phase() const;
+    std::optional<content::GeometryDomain> domain() const;
+
+    const content::PrototileCatalog *catalog() const;
+
+    // The canonical identities the active domain admits, in presentation order.
+    // Empty in domain phase.
+    std::vector<const content::CanonicalPrototile *> domain_entries() const;
+
+    const std::vector<PaletteRow> &palette_rows() const;
+    const engine::Palette *palette() const;
+
+    // The authored color of one locked palette entry, in palette order.
+    std::optional<godot::Color> entry_color(std::size_t p_entry) const;
+
+    const std::vector<engine::BlueprintPlacement> &blueprint() const;
+    const Arrangement *arrangement() const;
+
+    std::optional<Selection> selection() const;
+    const OrientedPrototile *selected_variant() const;
+
+    // The remaining finite pieces of one palette entry, derived from the
+    // blueprint records. Empty for an unlimited entry.
+    std::optional<engine::Supply::Amount> remaining_supply(std::size_t p_entry) const;
+
+    const std::vector<Proposal> &proposals() const {
+        return proposals_;
     }
 
-    godot::Ref<LevelResource> level_resource() const;
-    const engine::Palette *compiled_palette() const;
-    const Region *compiled_region() const;
-    const std::vector<PaletteRow> &palette_rows() const;
-    const OpenLoop *open_loop() const;
-    bool is_dirty() const;
-    bool can_save() const;
-
-    PendingAction pending_action() const {
-        return pending_action_;
+    std::optional<std::size_t> active_proposal() const {
+        return active_proposal_;
     }
 
     const godot::String &status_text() const {
         return status_;
     }
-
-    const content::PrototileCatalog *catalog() const;
-
-    // Snap one local pointer position onto the integer grid. Empty when the
-    // result is not finite or leaves the representable whole-game-unit range.
-    std::optional<GridPoint> snap_local(godot::Vector2 p_local) const;
 
     // The lossy presentation projection and the camera behind it. Exposed so
     // pointer-driven behaviour can be exercised through the same transform the
@@ -182,8 +195,9 @@ public:
     godot::Vector2 camera_origin() const;
     godot::Rect2 canvas_rect() const;
 
-    // The row control nodes, so the runner can prove the visible surface really
-    // is one row per catalog entry rather than only checking internal state.
+    // The generated control nodes, so the runner can prove the visible surface
+    // really is one row per admitted identity rather than only checking internal
+    // state.
     godot::CheckBox *row_include_control(std::size_t p_row) const;
     PrototilePreview *row_preview_control(std::size_t p_row) const;
     godot::Label *row_name_control(std::size_t p_row) const;
@@ -191,39 +205,36 @@ public:
     godot::SpinBox *row_amount_control(std::size_t p_row) const;
     godot::ColorPickerButton *row_color_control(std::size_t p_row) const;
 
+    godot::Button *entry_select_control(std::size_t p_entry) const;
+    godot::Label *entry_supply_control(std::size_t p_entry) const;
+
     godot::Button *action_button(const char *p_name) const;
 
     // --- bound callbacks ---
 
-    void on_new_level_pressed();
-    void on_open_draft_pressed();
-    void on_restart_region_pressed();
-    void on_add_hole_pressed();
-    void on_save_pressed();
-    void on_save_as_pressed();
-    void on_play_pressed();
-
-    void on_open_file_selected(const godot::String &p_path);
-    void on_save_file_selected(const godot::String &p_path);
-    void on_discard_confirmed();
-    void on_discard_canceled();
+    void on_lattice_pressed();
+    void on_hex12_pressed();
+    void on_choose_domain_pressed();
+    void on_build_palette_pressed();
+    void on_rotate_pressed();
+    void on_clear_blueprint_pressed();
 
     void on_row_included_toggled(bool p_pressed, std::int64_t p_row);
     void on_row_supply_selected(std::int64_t p_index, std::int64_t p_row);
     void on_row_amount_changed(double p_amount, std::int64_t p_row);
     void on_row_color_changed(const godot::Color &p_color, std::int64_t p_row);
 
+    void on_entry_pressed(std::int64_t p_entry);
+
 private:
     // One reversible presentation transform. Screen projection is lossy and its
-    // inverse is only ever used to produce a snapped integer.
+    // inverse is used for nothing but ranking and hit testing.
     struct Camera final {
         godot::Vector2 origin_pixels;
         double pixels_per_unit = 32.0;
     };
 
-    // The controls one catalog row owns. They are ordinary Godot children of the
-    // rows container; nothing here is a registered class or a second document
-    // model.
+    // The controls one palette-phase row owns.
     struct RowControls final {
         godot::CheckBox *include = nullptr;
         PrototilePreview *preview = nullptr;
@@ -233,73 +244,85 @@ private:
         godot::ColorPickerButton *color = nullptr;
     };
 
-    // The complete editable document. compiled_palette and compiled_region are
-    // derived proof-bearing values held for presentation only; every save and
-    // play request compiles the complete resource again rather than trusting
-    // them.
+    // The controls one blueprint-phase palette entry owns.
+    struct EntryControls final {
+        godot::ColorRect *swatch = nullptr;
+        PrototilePreview *preview = nullptr;
+        godot::Button *select = nullptr;
+        godot::Label *supply = nullptr;
+    };
+
+    // The complete editable document. The palette is absent in palette phase and
+    // locked once present; the records and the arrangement are always published
+    // together.
     struct Document final {
-        godot::Ref<LevelResource> resource;
-        std::optional<engine::Palette> compiled_palette;
-        std::optional<Region> compiled_region;
+        content::GeometryDomain domain = content::GeometryDomain::lattice;
         std::vector<PaletteRow> rows;
-        std::optional<OpenLoop> open_loop;
-        bool dirty = false;
+        std::optional<engine::Palette> palette;
+        // Authored colors, in locked palette order.
+        std::vector<godot::Color> colors;
+        std::vector<engine::BlueprintPlacement> records;
+        Arrangement arrangement;
+        std::optional<Selection> selection;
     };
 
     bool bind_scene();
 
-    // The canonical identities this editor presents: the catalog's lattice
-    // domain view, in that domain's presentation order. Every row index, row
-    // bound, and published id is an index into this view.
-    std::vector<const content::CanonicalPrototile *> lattice_entries() const;
-
     void build_palette_rows();
+    void clear_palette_rows();
     void sync_row_controls(std::size_t p_row);
     void sync_all_row_controls();
 
-    // Build one candidate palette from the current rows and publish it only if
-    // it compiles. p_previous_rows restores the visible controls if it does not.
-    void publish_palette(const std::vector<PaletteRow> &p_previous_rows);
+    void build_entry_rows();
+    void clear_entry_rows();
+    void sync_entry_rows();
 
-    // Build a candidate region resource from the accepted region plus the open
-    // loop, compile it, and publish it only on success.
-    bool commit_open_loop();
+    // Publish one candidate record sequence only if the complete candidate
+    // compiles. The current records and arrangement survive every failure.
+    bool publish(std::vector<engine::BlueprintPlacement> p_candidate);
+
+    // Re-derive the offered additions for the current selection and blueprint,
+    // then re-rank them against the last pointer position. Pure with respect to
+    // the document: no preview reserves an id, consumes supply, or changes the
+    // blueprint.
+    void rebuild_proposals();
+    bool update_active_proposal();
+
+    const engine::PaletteEntry *selected_entry() const;
 
     void refresh_controls();
     void refresh_instructions();
-    void refresh_path_label();
-    void refresh_coordinate_label();
+    void refresh_selection_label();
     void set_status(const godot::String &p_text);
 
     void center_camera_on_origin();
-    void frame_region(const Region &p_region);
     godot::Vector2 to_screen(double p_x, double p_y) const;
-    godot::Vector2 to_screen(GridPoint p_point) const;
+    godot::Vector2 to_screen(Point p_point) const;
     void update_canvas_rect();
-    void update_snapped_cursor(godot::Vector2 p_local);
     void zoom_at(godot::Vector2 p_local, double p_factor);
 
-    void draw_grid();
-    void draw_region_area();
-    void draw_open_loop();
-    void draw_cursor();
-
-    void popup_open_dialog();
-    void popup_save_dialog();
+    void draw_axes();
+    void draw_arrangement();
+    void draw_ghost();
 
     // The one successfully constructed canonical catalog. It is the sole source
     // of playable geometry, display names, and row identity for this editor.
     std::optional<content::PrototileCatalog> catalog_;
 
     std::optional<Document> document_;
-    PendingAction pending_action_ = PendingAction::none;
+
+    // Derived presentation state. Authoritative geometry stays in the document's
+    // records and arrangement and in each proposal's exact Placement; nothing
+    // here is a second coordinate representation.
+    std::vector<Proposal> proposals_;
+    std::optional<std::size_t> active_proposal_;
 
     Camera camera_;
     godot::Rect2 canvas_rect_;
 
-    std::optional<godot::Vector2> cursor_pixels_;
-    std::optional<GridPoint> snapped_;
-    bool snap_out_of_range_ = false;
+    // The last local pointer position, in control pixels. It ranks projected
+    // handles and hit-tests projected footprints, and does nothing else.
+    std::optional<godot::Vector2> pointer_;
 
     std::optional<godot::Vector2> pan_anchor_;
 
@@ -313,23 +336,25 @@ private:
     godot::Control *toolbar_ = nullptr;
     godot::Control *palette_panel_ = nullptr;
     godot::Control *status_bar_ = nullptr;
+    godot::Control *palette_scroll_ = nullptr;
+    godot::Control *entry_scroll_ = nullptr;
     godot::VBoxContainer *rows_container_ = nullptr;
+    godot::VBoxContainer *entries_container_ = nullptr;
+    godot::Label *palette_title_ = nullptr;
+    godot::Label *entry_title_ = nullptr;
     godot::Label *instruction_label_ = nullptr;
     godot::Label *status_label_ = nullptr;
-    godot::Label *coordinate_label_ = nullptr;
-    godot::Label *path_label_ = nullptr;
-    godot::Button *new_level_button_ = nullptr;
-    godot::Button *open_draft_button_ = nullptr;
-    godot::Button *restart_region_button_ = nullptr;
-    godot::Button *add_hole_button_ = nullptr;
-    godot::Button *save_button_ = nullptr;
-    godot::Button *save_as_button_ = nullptr;
-    godot::Button *play_button_ = nullptr;
-    godot::FileDialog *open_dialog_ = nullptr;
-    godot::FileDialog *save_dialog_ = nullptr;
-    godot::ConfirmationDialog *discard_dialog_ = nullptr;
+    godot::Label *selection_label_ = nullptr;
+    godot::Label *phase_label_ = nullptr;
+    godot::Button *lattice_button_ = nullptr;
+    godot::Button *hex12_button_ = nullptr;
+    godot::Button *choose_domain_button_ = nullptr;
+    godot::Button *build_palette_button_ = nullptr;
+    godot::Button *rotate_button_ = nullptr;
+    godot::Button *clear_blueprint_button_ = nullptr;
 
     std::vector<RowControls> row_controls_;
+    std::vector<EntryControls> entry_controls_;
 };
 
 } // namespace tiles::game

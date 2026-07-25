@@ -32,43 +32,39 @@ theme_override_constants/margin_bottom = 6
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="NewLevelButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="LatticeButton" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "new level"
+text = "lattice"
 
-[node name="OpenDraftButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="Hex12Button" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "open draft…"
+text = "hex12"
 
-[node name="RestartRegionButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="ChooseDomainButton" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "restart region"
+text = "choose domain"
 
-[node name="AddHoleButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="BuildPaletteButton" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "add hole"
+text = "build palette"
 
-[node name="SaveButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="RotateButton" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "save"
+text = "rotate"
 
-[node name="SaveAsButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="ClearBlueprintButton" type="Button" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
-text = "save as…"
-
-[node name="PlayButton" type="Button" parent="Toolbar/Margin/Actions"]
-layout_mode = 2
-text = "play"
+text = "clear blueprint"
 
 [node name="Spacer" type="Control" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="PathLabel" type="Label" parent="Toolbar/Margin/Actions"]
+[node name="PhaseLabel" type="Label" parent="Toolbar/Margin/Actions"]
 layout_mode = 2
 vertical_alignment = 1
-text = "unsaved level"
+text = "no document"
 
 [node name="PalettePanel" type="ColorRect" parent="."]
 layout_mode = 1
@@ -98,16 +94,35 @@ layout_mode = 2
 theme_override_constants/separation = 4
 
 [node name="PaletteTitle" type="Label" parent="PalettePanel/Margin/Body"]
+visible = false
 layout_mode = 2
 text = "palette — include a tile, then choose its supply and color"
 autowrap_mode = 3
 
 [node name="PaletteScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body"]
+visible = false
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
 [node name="PaletteRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/PaletteScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="EntryTitle" type="Label" parent="PalettePanel/Margin/Body"]
+visible = false
+layout_mode = 2
+text = "blueprint — choose a tile, rotate it, then click the canvas"
+autowrap_mode = 3
+
+[node name="EntryScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="EntryRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/EntryScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
@@ -142,7 +157,7 @@ theme_override_constants/separation = 2
 
 [node name="InstructionLabel" type="Label" parent="StatusBar/Margin/Body"]
 layout_mode = 2
-text = "choose at least one tile, then draw the outer boundary."
+text = "choose a geometry domain: lattice or hex12."
 autowrap_mode = 3
 
 [node name="Line" type="HBoxContainer" parent="StatusBar/Margin/Body"]
@@ -151,38 +166,13 @@ theme_override_constants/separation = 8
 
 [node name="StatusLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
 layout_mode = 2
-text = "new unsaved level"
+text = "choose a geometry domain"
 
 [node name="Spacer" type="Control" parent="StatusBar/Margin/Body/Line"]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="CoordinateLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
+[node name="SelectionLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
 layout_mode = 2
-text = "(—, —)"
-
-[node name="OpenDialog" type="FileDialog" parent="."]
-title = "open level draft"
-initial_position = 2
-size = Vector2i(760, 520)
-visible = false
-access = 0
-file_mode = 0
-filters = PackedStringArray("*.tres;godot resource", "*.res;godot binary resource")
-
-[node name="SaveDialog" type="FileDialog" parent="."]
-title = "save level"
-initial_position = 2
-size = Vector2i(760, 520)
-visible = false
-access = 0
-file_mode = 4
-filters = PackedStringArray("*.tres;godot resource", "*.res;godot binary resource")
-
-[node name="DiscardDialog" type="ConfirmationDialog" parent="."]
-title = "discard draft"
-initial_position = 2
-size = Vector2i(420, 120)
-visible = false
-dialog_text = "discard the current unsaved draft?"
+text = "—"
