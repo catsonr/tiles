@@ -10,6 +10,13 @@
 
 namespace tiles {
 
+// The narrow construction bridge used by the hex-12 source compiler. It is
+// declared here and defined only in that compiler's translation unit, so this
+// header exposes no unchecked way to pair geometry with a claimed orientation.
+// It exists because the hex-12 compiler's result and error types cannot be named
+// here without an include cycle.
+class Hex12OrientedPrototileAccess;
+
 enum class LatticeOrientationErrorCode {
     empty_orientation_set,
     unsupported_orientation,
@@ -26,15 +33,23 @@ struct LatticeOrientationError final {
     std::optional<PolygonError> polygon_error;
 };
 
-// A prototile compiled into one admitted lattice orientation together with the
-// resulting canonical local geometry. Value-owning and immutable after
-// construction. Its polygon is validated, translation-normalized q16.48 local
-// geometry: not a world-space footprint and not arrangement state.
+// A prototile compiled into one admitted orientation together with the resulting
+// canonical local geometry. Value-owning and immutable after construction. Its
+// polygon is validated, translation-normalized q16.48 local geometry: not a
+// world-space footprint and not arrangement state.
 //
 // There is no public constructor pairing arbitrary geometry with a claimed
-// orientation; only compile_lattice_orientations may publish the value, so a
-// stored polygon is always an exact rotation of its prototile's reference
-// polygon.
+// orientation. The invariant every consumer may rely on is:
+//
+//     every OrientedPrototile is published by a checked source compiler
+//     and pairs its claimed orientation with that compiler's validated,
+//     translation-normalized canonical q16.48 polygon.
+//
+// How a compiler reached that polygon is its own business. The lattice compiler
+// permutes the q16.48 reference polygon through an exact quarter turn; a
+// direction-module compiler may instead construct each phase's boundary directly
+// from its own exact source. Neither derives one published orientation from
+// another.
 class OrientedPrototile final {
 public:
     const Prototile &prototile() const {
@@ -70,6 +85,8 @@ private:
     friend Result<std::vector<OrientedPrototile>, LatticeOrientationError>
     compile_lattice_orientations(
         const Prototile &p_prototile, std::vector<Orientation> p_requested);
+
+    friend class Hex12OrientedPrototileAccess;
 };
 
 // Compile a finite requested set of lattice orientations of one prototile into
