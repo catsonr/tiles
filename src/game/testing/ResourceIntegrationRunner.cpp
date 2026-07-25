@@ -1,6 +1,8 @@
 #include "game/testing/ResourceIntegrationRunner.h"
 
+#include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
+#include "core/Hex12.h"
 #include "core/Orientation.h"
 #include "core/OrientedPrototile.h"
 #include "core/geometry/Coordinate.h"
@@ -41,6 +43,52 @@ namespace {
 const char *TEMPORARY_DIRECTORY = "res://.godot/tiles_resource_integration";
 
 const char *FIXTURE_PATH = "res://tests/fixtures/canonical_level.tres";
+
+// The hex-12 canonical identities and their presentation order, restated here
+// rather than read out of the catalog this runner is checking.
+constexpr std::int64_t HEX12_TRIANGLE_ID = 35;
+constexpr std::int64_t HEX12_SQUARE_ID = 27;
+constexpr std::int64_t HEX12_HEXAGON_ID = 36;
+constexpr std::int64_t HEX12_DODECAGON_ID = 37;
+constexpr std::size_t HEX12_VIEW_SIZE = 4;
+
+// One authored hex-12 entry together with everything its compiled product must
+// carry: its supply, its source polygon, and its complete equivalence-label
+// table written as twelfth-turn steps.
+struct HexEntryExpectation final {
+    std::int64_t id;
+    bool unlimited;
+    engine::Supply::Amount supply;
+    Hex12RegularPolygon polygon;
+    std::vector<std::vector<std::size_t>> groups;
+};
+
+const std::vector<HexEntryExpectation> &hex12_expectations() {
+    static const std::vector<HexEntryExpectation> expectations = {
+        { HEX12_TRIANGLE_ID, false, 3, Hex12RegularPolygon::triangle,
+            { { 0, 4, 8 }, { 1, 5, 9 }, { 2, 6, 10 }, { 3, 7, 11 } } },
+        { HEX12_SQUARE_ID, true, 0, Hex12RegularPolygon::square,
+            { { 0, 3, 6, 9 }, { 1, 4, 7, 10 }, { 2, 5, 8, 11 } } },
+        { HEX12_HEXAGON_ID, false, 2, Hex12RegularPolygon::hexagon,
+            { { 0, 2, 4, 6, 8, 10 }, { 1, 3, 5, 7, 9, 11 } } },
+        { HEX12_DODECAGON_ID, false, 1, Hex12RegularPolygon::dodecagon,
+            { { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 } } },
+    };
+    return expectations;
+}
+
+Orientation twelfth_turn(std::size_t p_step) {
+    return Orientation::make(static_cast<Orientation::Component>(p_step), 12).value();
+}
+
+std::vector<Orientation> all_twelfth_turns() {
+    std::vector<Orientation> requested;
+    requested.reserve(12);
+    for (std::size_t k = 0; k < 12; ++k) {
+        requested.push_back(twelfth_turn(k));
+    }
+    return requested;
+}
 
 godot::String temporary_path(const char *p_file) {
     return godot::String(TEMPORARY_DIRECTORY).path_join(godot::String(p_file));
@@ -508,7 +556,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
     const godot::Color white(1.0f, 1.0f, 1.0f, 1.0f);
 
     {
-        auto compiled = compile_palette_resource(godot::Ref<PaletteResource>(), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, godot::Ref<PaletteResource>(), p_catalog);
         if (expect(!compiled, "a null palette resource fails to compile")) {
             expect(
                 compiled.error().code == PaletteResourceErrorCode::missing_resource,
@@ -520,7 +569,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(1, -1, white));
         entries.push_back(godot::Ref<PaletteEntryResource>());
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "a null palette entry fails to compile")) {
             expect(
                 compiled.error().code == PaletteResourceErrorCode::missing_entry,
@@ -535,7 +585,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(1, -1, white));
         entries.push_back(make_entry(-3, -1, white));
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "a negative prototile id fails to compile")) {
             const PaletteResourceError &error = compiled.error();
             expect(
@@ -559,7 +610,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         // not as a negative-id error.
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(0, -1, white));
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "prototile id 0 fails against the shipped catalog")) {
             const PaletteResourceError &error = compiled.error();
             expect(
@@ -580,7 +632,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(1, -1, white));
         entries.push_back(make_entry(999, -1, white));
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "an unknown positive prototile id fails to compile")) {
             const PaletteResourceError &error = compiled.error();
             expect(
@@ -601,7 +654,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         for (const std::int64_t supply : invalid_supplies) {
             godot::TypedArray<PaletteEntryResource> entries;
             entries.push_back(make_entry(1, supply, white));
-            auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+            auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
             if (expect(!compiled, "an invalid supply encoding fails to compile")) {
                 const PaletteResourceError &error = compiled.error();
                 expect(
@@ -621,7 +675,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
 
     {
         godot::TypedArray<PaletteEntryResource> entries;
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "an empty palette fails to compile")) {
             expect(
                 compiled.error().code
@@ -638,7 +693,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(1, -1, white));
         entries.push_back(make_entry(1, 2, white));
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(!compiled, "a duplicate prototile id fails to compile")) {
             expect(
                 compiled.error().palette_error.has_value()
@@ -652,7 +708,8 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> entries;
         entries.push_back(make_entry(1, 3, white));
         entries.push_back(make_entry(2, -1, white));
-        auto compiled = compile_palette_resource(make_palette(entries), p_catalog);
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
         if (expect(bool(compiled), "a valid palette compiles")) {
             const engine::Palette &palette = compiled.value();
             expect(palette.order() == 2, "authored palette order is preserved");
@@ -694,14 +751,259 @@ void ResourceIntegrationRunner::check_palette_compilation(
         godot::TypedArray<PaletteEntryResource> colored;
         colored.push_back(make_entry(3, 2, godot::Color(0.25f, 0.75f, 0.5f, 1.0f)));
 
-        auto first = compile_palette_resource(make_palette(plain), p_catalog);
-        auto second = compile_palette_resource(make_palette(colored), p_catalog);
+        auto first = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(plain), p_catalog);
+        auto second = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(colored), p_catalog);
         if (expect(
                 bool(first) && bool(second),
                 "palettes differing only in color both compile")) {
             expect(
                 same_palette(first.value(), second.value()),
                 "palette compilation ignores authored color");
+        }
+    }
+}
+
+void ResourceIntegrationRunner::check_domain_palette_compilation(
+    const content::PrototileCatalog &p_catalog) {
+    const godot::Color white(1.0f, 1.0f, 1.0f, 1.0f);
+
+    // A domain value cast from an arbitrary integer. It is representable
+    // because the enumeration fixes its underlying type, so rejecting it is an
+    // ordinary observable behaviour rather than undefined.
+    const content::GeometryDomain invalid_domain =
+        static_cast<content::GeometryDomain>(200);
+
+    {
+        // Domain validity is answered after a missing resource and before any
+        // authored entry is read.
+        auto missing = compile_palette_resource(
+            invalid_domain, godot::Ref<PaletteResource>(), p_catalog);
+        if (expect(!missing, "an invalid domain with no resource fails to compile")) {
+            expect(
+                missing.error().code == PaletteResourceErrorCode::missing_resource,
+                "a missing palette resource answers before the geometry domain");
+        }
+
+        godot::TypedArray<PaletteEntryResource> entries;
+        entries.push_back(godot::Ref<PaletteEntryResource>());
+        auto compiled =
+            compile_palette_resource(invalid_domain, make_palette(entries), p_catalog);
+        if (expect(!compiled, "an invalid geometry domain fails to compile")) {
+            const PaletteResourceError &error = compiled.error();
+            expect(
+                error.code == PaletteResourceErrorCode::unsupported_geometry_domain,
+                "an invalid domain reports unsupported_geometry_domain");
+            expect(
+                !error.entry.has_value(),
+                "an invalid domain answers before any authored entry");
+            expect(
+                !error.orientation_error.has_value()
+                    && !error.palette_entry_error.has_value()
+                    && !error.palette_error.has_value(),
+                "an invalid domain carries no nested compiler error");
+        }
+    }
+
+    {
+        // A lattice-only identity refused by hex-12, and a hex-only identity
+        // refused by the lattice, both at the same typed alternative.
+        godot::TypedArray<PaletteEntryResource> lattice_only;
+        lattice_only.push_back(make_entry(HEX12_TRIANGLE_ID, -1, white));
+        lattice_only.push_back(make_entry(1, -1, white));
+        auto in_hex12 = compile_palette_resource(
+            content::GeometryDomain::hex12, make_palette(lattice_only), p_catalog);
+        if (expect(!in_hex12, "a lattice-only id fails to compile in hex12")) {
+            const PaletteResourceError &error = in_hex12.error();
+            expect(
+                error.code == PaletteResourceErrorCode::prototile_unavailable_in_domain,
+                "a lattice-only id in hex12 reports prototile_unavailable_in_domain");
+            expect(
+                error.entry.has_value() && error.entry.value() == 1,
+                "an unavailable id reports its authored entry index");
+            expect(
+                error.prototile_id.has_value()
+                    && error.prototile_id.value() == PrototileId(1),
+                "an unavailable id reports its resolved strong id");
+            expect(
+                !error.orientation_error.has_value(),
+                "an unavailable id is refused before orientation compilation");
+        }
+
+        godot::TypedArray<PaletteEntryResource> hex_only;
+        hex_only.push_back(make_entry(HEX12_HEXAGON_ID, -1, white));
+        auto in_lattice = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(hex_only), p_catalog);
+        if (expect(!in_lattice, "a hex-only id fails to compile in lattice")) {
+            const PaletteResourceError &error = in_lattice.error();
+            expect(
+                error.code == PaletteResourceErrorCode::prototile_unavailable_in_domain,
+                "a hex-only id in lattice reports prototile_unavailable_in_domain");
+            expect(
+                error.entry.has_value() && error.entry.value() == 0,
+                "a hex-only id in lattice reports its authored entry index");
+        }
+    }
+
+    {
+        // Nothing is published after a later entry fails, and neither the
+        // resource nor the catalog is touched by a failed compilation.
+        godot::TypedArray<PaletteEntryResource> entries;
+        entries.push_back(make_entry(HEX12_TRIANGLE_ID, 4, white));
+        entries.push_back(make_entry(1, -1, white));
+        const godot::Ref<PaletteResource> resource = make_palette(entries);
+
+        const std::size_t catalog_size = p_catalog.entries().size();
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::hex12, resource, p_catalog);
+        if (expect(!compiled, "a later unavailable entry fails the whole palette")) {
+            expect(
+                compiled.error().entry.has_value() && compiled.error().entry.value() == 1,
+                "the failing entry is the later one, so no partial palette exists");
+        }
+        expect(
+            resource->get_entries().size() == 2,
+            "a failed compilation leaves the resource entry count unchanged");
+        const godot::Ref<PaletteEntryResource> first_entry = resource->get_entries()[0];
+        expect(
+            first_entry.is_valid() && first_entry->get_prototile_id() == HEX12_TRIANGLE_ID
+                && first_entry->get_supply() == 4 && first_entry->get_color() == white,
+            "a failed compilation leaves every authored entry unchanged");
+        expect(
+            p_catalog.entries().size() == catalog_size
+                && p_catalog.entries_for(content::GeometryDomain::hex12).size()
+                    == HEX12_VIEW_SIZE,
+            "a failed compilation leaves the catalog unchanged");
+    }
+
+    {
+        // The complete hex-12 palette, authored in presentation order.
+        godot::TypedArray<PaletteEntryResource> entries;
+        entries.push_back(make_entry(HEX12_TRIANGLE_ID, 3, white));
+        entries.push_back(make_entry(HEX12_SQUARE_ID, -1, white));
+        entries.push_back(make_entry(HEX12_HEXAGON_ID, 2, white));
+        entries.push_back(make_entry(HEX12_DODECAGON_ID, 1, white));
+        const godot::Ref<PaletteResource> resource = make_palette(entries);
+
+        auto compiled = compile_palette_resource(
+            content::GeometryDomain::hex12, resource, p_catalog);
+        if (expect(bool(compiled), "the four-entry hex-12 palette compiles")) {
+            const engine::Palette &palette = compiled.value();
+            if (expect(palette.order() == 4, "the hex-12 palette has order four")) {
+                for (std::size_t i = 0; i < HEX12_VIEW_SIZE; ++i) {
+                    const HexEntryExpectation &expectation = hex12_expectations()[i];
+                    const engine::PaletteEntry &entry = palette.entries()[i];
+
+                    expect(
+                        entry.prototile().id() == PrototileId(expectation.id),
+                        "the hex-12 palette preserves authored presentation order");
+                    expect(
+                        expectation.unlimited
+                            ? entry.supply().is_unlimited()
+                            : entry.supply().finite_amount().has_value()
+                                && entry.supply().finite_amount().value()
+                                    == expectation.supply,
+                        "each hex-12 entry keeps its configured supply");
+                    expect(
+                        entry.orientations().size() == expectation.groups.size(),
+                        "each hex-12 entry exposes its distinct orientation count");
+                    if (entry.orientations().size() != expectation.groups.size()) {
+                        continue;
+                    }
+
+                    // The same identity compiled directly by the ordinary hex-12
+                    // core compiler, so the expected geometry is not read back
+                    // out of the integration path being checked.
+                    auto direct = compile_hex12_orientations(
+                        PrototileId(expectation.id),
+                        expectation.polygon,
+                        all_twelfth_turns());
+                    if (!expect(
+                            bool(direct),
+                            "the ordinary hex-12 compiler produces the same identity")) {
+                        continue;
+                    }
+
+                    expect(
+                        same_boundary(
+                            entry.prototile().polygon(),
+                            direct.value().front().prototile().polygon()),
+                        "each hex-12 entry keeps the module's exact reference boundary");
+
+                    bool orientations_match = true;
+                    for (std::size_t g = 0; g < entry.orientations().size(); ++g) {
+                        const OrientedPrototile &oriented = entry.orientations()[g];
+                        const std::vector<std::size_t> &steps = expectation.groups[g];
+
+                        if (oriented.orientation() != twelfth_turn(steps.front())) {
+                            orientations_match = false;
+                        }
+                        if (oriented.equivalent_orientations().size() != steps.size()) {
+                            orientations_match = false;
+                        } else {
+                            for (std::size_t k = 0; k < steps.size(); ++k) {
+                                if (oriented.equivalent_orientations()[k]
+                                    != twelfth_turn(steps[k])) {
+                                    orientations_match = false;
+                                }
+                            }
+                        }
+                        if (!same_boundary(
+                                oriented.canonical_polygon(),
+                                direct.value()[g].canonical_polygon())) {
+                            orientations_match = false;
+                        }
+                    }
+                    expect(
+                        orientations_match,
+                        "each hex-12 entry keeps its exact representatives, equivalence "
+                        "labels, and oriented boundaries");
+                }
+            }
+        }
+
+        // Color is presentation only in hex-12 exactly as in the lattice.
+        godot::TypedArray<PaletteEntryResource> colored;
+        colored.push_back(make_entry(HEX12_TRIANGLE_ID, 3, godot::Color(0.2f, 0.4f, 0.9f, 1.0f)));
+        colored.push_back(make_entry(HEX12_SQUARE_ID, -1, godot::Color(0.9f, 0.1f, 0.3f, 1.0f)));
+        colored.push_back(make_entry(HEX12_HEXAGON_ID, 2, godot::Color(0.1f, 0.8f, 0.4f, 1.0f)));
+        colored.push_back(make_entry(HEX12_DODECAGON_ID, 1, godot::Color(0.7f, 0.7f, 0.1f, 1.0f)));
+        auto recolored = compile_palette_resource(
+            content::GeometryDomain::hex12, make_palette(colored), p_catalog);
+        if (expect(
+                bool(compiled) && bool(recolored),
+                "hex-12 palettes differing only in color both compile")) {
+            expect(
+                same_palette(compiled.value(), recolored.value()),
+                "hex-12 palette compilation ignores authored color");
+        }
+    }
+
+    {
+        // The shared unit square is one identity whose compiled orientation set
+        // is chosen by the domain: one lattice group against three hex-12 groups.
+        godot::TypedArray<PaletteEntryResource> entries;
+        entries.push_back(make_entry(HEX12_SQUARE_ID, -1, white));
+
+        auto lattice = compile_palette_resource(
+            content::GeometryDomain::lattice, make_palette(entries), p_catalog);
+        auto hex12 = compile_palette_resource(
+            content::GeometryDomain::hex12, make_palette(entries), p_catalog);
+        if (expect(
+                bool(lattice) && bool(hex12),
+                "the unit square compiles in both geometry domains")) {
+            expect(
+                lattice.value().entries()[0].orientations().size() == 1
+                    && hex12.value().entries()[0].orientations().size() == 3,
+                "the unit square's admitted orientations are domain-selected");
+            expect(
+                lattice.value().entries()[0].prototile().id()
+                        == hex12.value().entries()[0].prototile().id()
+                    && same_boundary(
+                        lattice.value().entries()[0].prototile().polygon(),
+                        hex12.value().entries()[0].prototile().polygon()),
+                "the unit square is one identity with one reference boundary");
         }
     }
 }
@@ -1349,6 +1651,7 @@ void ResourceIntegrationRunner::_ready() {
     check_setter_notifications();
     check_polygon_compilation();
     check_palette_compilation(catalog.value());
+    check_domain_palette_compilation(catalog.value());
     check_region_compilation();
     check_level_compilation(catalog.value());
     check_authored_fixture(catalog.value());

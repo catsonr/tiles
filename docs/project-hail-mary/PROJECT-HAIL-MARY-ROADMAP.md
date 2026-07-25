@@ -31,8 +31,8 @@ current status:
 ```text
 act 0    formalized and implemented
 act 1    formalized; awaiting implementation
-act 2    roadmap discussion
-act 2-1  roadmap discussion
+act 2    formalized; awaiting implementation
+act 2-1  formalized; awaiting implementation
 ```
 
 the acts are sequential but do not depend upon one another's hidden

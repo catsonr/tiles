@@ -46,6 +46,10 @@ private:
     void check_setter_notifications();
     void check_polygon_compilation();
     void check_palette_compilation(const content::PrototileCatalog &p_catalog);
+
+    // The domain-aware palette compiler: hex-12 compilation, domain membership
+    // refusals, an invalid domain, and the shared unit square.
+    void check_domain_palette_compilation(const content::PrototileCatalog &p_catalog);
     void check_region_compilation();
     void check_level_compilation(const content::PrototileCatalog &p_catalog);
     void check_authored_fixture(const content::PrototileCatalog &p_catalog);

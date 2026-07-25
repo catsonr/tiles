@@ -1,6 +1,7 @@
 #include "game/resources/ResourceCompiler.h"
 
-#include "core/Orientation.h"
+#include "content/CanonicalOrientationCompiler.h"
+#include "content/GeometryDomain.h"
 #include "core/geometry/Point.h"
 #include "engine/Supply.h"
 
@@ -50,6 +51,17 @@ PaletteResourceError entry_failure(PaletteResourceErrorCode p_code, std::size_t 
     PaletteResourceError error = palette_failure(p_code);
     error.entry = p_entry;
     return error;
+}
+
+// Whether a transported domain value names one of the two geometry domains. A
+// value cast from an arbitrary integer names neither.
+bool is_known_domain(content::GeometryDomain p_domain) {
+    switch (p_domain) {
+        case content::GeometryDomain::lattice:
+        case content::GeometryDomain::hex12:
+            return true;
+    }
+    return false;
 }
 
 // --- region ---
@@ -111,6 +123,7 @@ Result<Polygon, PolygonResourceError> compile_polygon_resource(
 }
 
 Result<engine::Palette, PaletteResourceError> compile_palette_resource(
+    content::GeometryDomain p_domain,
     const godot::Ref<PaletteResource> &p_resource,
     const content::PrototileCatalog &p_catalog) {
     using Compiled = Result<engine::Palette, PaletteResourceError>;
@@ -119,14 +132,13 @@ Result<engine::Palette, PaletteResourceError> compile_palette_resource(
         return Compiled::failure(palette_failure(PaletteResourceErrorCode::missing_resource));
     }
 
-    // The uniform rotation rule for this milestone. The core compiler collapses
-    // geometrically identical results, so a square still offers one choice.
-    const std::vector<Orientation> requested = {
-        Orientation::reference(),
-        Orientation::quarter(),
-        Orientation::half(),
-        Orientation::three_quarter(),
-    };
+    // A domain cast from an arbitrary integer is rejected once, before any
+    // authored entry is read, rather than silently answering as one domain per
+    // entry.
+    if (!is_known_domain(p_domain)) {
+        return Compiled::failure(
+            palette_failure(PaletteResourceErrorCode::unsupported_geometry_domain));
+    }
 
     const godot::TypedArray<PaletteEntryResource> authored = p_resource->get_entries();
 
@@ -163,6 +175,17 @@ Result<engine::Palette, PaletteResourceError> compile_palette_resource(
             return Compiled::failure(error);
         }
 
+        // A known identity the selected domain does not admit is refused here.
+        // Nothing substitutes the other domain's compiler, a congruent id, or a
+        // fallback shape.
+        if (!canonical->supports(p_domain)) {
+            PaletteResourceError error = entry_failure(
+                PaletteResourceErrorCode::prototile_unavailable_in_domain, index);
+            error.encoded_prototile_id = encoded_id;
+            error.prototile_id = id;
+            return Compiled::failure(error);
+        }
+
         const std::int64_t encoded_supply = authored_entry->get_supply();
         std::optional<engine::Supply> supply;
         if (encoded_supply == -1) {
@@ -185,16 +208,29 @@ Result<engine::Palette, PaletteResourceError> compile_palette_resource(
             return Compiled::failure(error);
         }
 
-        // The catalog-owned exact prototile, never a re-quantized or
-        // resource-authored copy of it.
-        auto entry = engine::PaletteEntry::make(
-            canonical->prototile(), supply.value(), requested);
-        if (!entry) {
+        // The catalog-owned canonical entry compiled in the selected domain,
+        // never a re-quantized or resource-authored copy of its geometry. The
+        // domain chooses the source compiler here and disappears immediately
+        // afterwards.
+        auto compiled_orientations =
+            content::compile_canonical_orientations(p_domain, *canonical);
+        if (!compiled_orientations) {
             PaletteResourceError error = entry_failure(
                 PaletteResourceErrorCode::orientation_compilation_failed, index);
             error.encoded_prototile_id = encoded_id;
             error.prototile_id = id;
-            error.orientation_error = entry.error();
+            error.orientation_error = compiled_orientations.error();
+            return Compiled::failure(error);
+        }
+
+        auto entry = engine::PaletteEntry::make_compiled(
+            supply.value(), std::move(compiled_orientations).value());
+        if (!entry) {
+            PaletteResourceError error = entry_failure(
+                PaletteResourceErrorCode::palette_entry_construction_failed, index);
+            error.encoded_prototile_id = encoded_id;
+            error.prototile_id = id;
+            error.palette_entry_error = entry.error();
             return Compiled::failure(error);
         }
 
@@ -264,7 +300,11 @@ Result<engine::Level, LevelResourceError> compile_level_resource(
         return Compiled::failure(level_failure(LevelResourceErrorCode::missing_resource));
     }
 
-    auto palette = compile_palette_resource(p_resource->get_palette(), p_catalog);
+    // This resource serializes no geometry domain, so it is compiled as lattice
+    // content. A later act replaces this source graph and supplies the
+    // serialized domain here.
+    auto palette = compile_palette_resource(
+        content::GeometryDomain::lattice, p_resource->get_palette(), p_catalog);
     if (!palette) {
         LevelResourceError error = level_failure(LevelResourceErrorCode::palette_invalid);
         error.palette_error = palette.error();

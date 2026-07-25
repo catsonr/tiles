@@ -121,6 +121,11 @@ const char *PLAY_BUTTON = "PlayButton";
 constexpr int SUPPLY_ITEM_UNLIMITED = 0;
 constexpr int SUPPLY_ITEM_FINITE = 1;
 
+// This editor is explicitly lattice-only. It presents the catalog's lattice
+// domain view, compiles every palette as lattice content, and offers no domain
+// chooser: a later act replaces this surface with the domain-aware one.
+constexpr content::GeometryDomain EDITOR_DOMAIN = content::GeometryDomain::lattice;
+
 double to_real(Coordinate p_coordinate) {
     return static_cast<double>(p_coordinate.raw()) / static_cast<double>(Coordinate::SCALE);
 }
@@ -295,6 +300,67 @@ godot::String describe(const LatticeOrientationError &p_error) {
     return "unknown orientation failure";
 }
 
+godot::String describe(const Hex12CompilationError &p_error) {
+    switch (p_error.code) {
+        case Hex12CompilationErrorCode::empty_orientation_set:
+            return "no orientations were requested";
+        case Hex12CompilationErrorCode::unsupported_polygon:
+            return "its source polygon is not a hex-12 polygon";
+        case Hex12CompilationErrorCode::unsupported_orientation:
+            return "an unsupported orientation was requested";
+        case Hex12CompilationErrorCode::coordinate_overflow:
+            return "building a phase overflowed the coordinate range";
+        case Hex12CompilationErrorCode::boundary_did_not_close:
+            return "a compiled boundary did not close";
+        case Hex12CompilationErrorCode::polygon_construction_failed:
+            return p_error.polygon_error.has_value()
+                ? describe(p_error.polygon_error.value())
+                : godot::String("a compiled boundary was invalid");
+        case Hex12CompilationErrorCode::prototile_construction_failed:
+            return "its reference prototile could not be built";
+        case Hex12CompilationErrorCode::normalization_overflow:
+            return "normalizing a compiled boundary overflowed";
+    }
+    return "unknown hex-12 failure";
+}
+
+godot::String describe(const content::CanonicalOrientationCompilationError &p_error) {
+    switch (p_error.code) {
+        case content::CanonicalOrientationCompilationErrorCode::unsupported_domain:
+            return "the geometry domain is not supported";
+        case content::CanonicalOrientationCompilationErrorCode::
+            prototile_unavailable_in_domain:
+            return "it is not playable in this geometry domain";
+        case content::CanonicalOrientationCompilationErrorCode::lattice_compilation_failed:
+            return p_error.lattice_error.has_value()
+                ? describe(p_error.lattice_error.value())
+                : godot::String("unknown orientation failure");
+        case content::CanonicalOrientationCompilationErrorCode::hex12_compilation_failed:
+            return p_error.hex12_error.has_value()
+                ? describe(p_error.hex12_error.value())
+                : godot::String("unknown hex-12 failure");
+    }
+    return "unknown orientation failure";
+}
+
+godot::String describe(const engine::PaletteEntryCompilationError &p_error) {
+    switch (p_error.code) {
+        case engine::PaletteEntryCompilationErrorCode::empty_orientations:
+            return "it compiled to no orientations";
+        case engine::PaletteEntryCompilationErrorCode::inconsistent_prototile_id:
+            return "its compiled orientations name different prototiles";
+        case engine::PaletteEntryCompilationErrorCode::inconsistent_reference_boundary:
+            return "its compiled orientations carry different reference geometry";
+        case engine::PaletteEntryCompilationErrorCode::representatives_not_strictly_ordered:
+            return "its compiled orientations are not in strict angular order";
+        case engine::PaletteEntryCompilationErrorCode::duplicate_orientation_label:
+            return "two compiled orientations claim the same angle";
+        case engine::PaletteEntryCompilationErrorCode::duplicate_canonical_boundary:
+            return "two compiled orientations share one boundary";
+    }
+    return "unknown palette entry failure";
+}
+
 godot::String describe(const PaletteResourceError &p_error) {
     godot::String prefix;
     if (p_error.entry.has_value()) {
@@ -303,6 +369,8 @@ godot::String describe(const PaletteResourceError &p_error) {
     switch (p_error.code) {
         case PaletteResourceErrorCode::missing_resource:
             return "the palette is missing";
+        case PaletteResourceErrorCode::unsupported_geometry_domain:
+            return "the geometry domain is not supported";
         case PaletteResourceErrorCode::missing_entry:
             return prefix + "is missing";
         case PaletteResourceErrorCode::negative_prototile_id:
@@ -316,6 +384,12 @@ godot::String describe(const PaletteResourceError &p_error) {
                         ? number(p_error.encoded_prototile_id.value())
                         : godot::String("?"))
                 + ", which is not in the catalog";
+        case PaletteResourceErrorCode::prototile_unavailable_in_domain:
+            return prefix + "names prototile id "
+                + (p_error.encoded_prototile_id.has_value()
+                        ? number(p_error.encoded_prototile_id.value())
+                        : godot::String("?"))
+                + ", which is not playable in this geometry domain";
         case PaletteResourceErrorCode::invalid_supply:
             return prefix + "has supply "
                 + (p_error.encoded_supply.has_value()
@@ -327,6 +401,11 @@ godot::String describe(const PaletteResourceError &p_error) {
                 + (p_error.orientation_error.has_value()
                         ? describe(p_error.orientation_error.value())
                         : godot::String("unknown orientation failure"));
+        case PaletteResourceErrorCode::palette_entry_construction_failed:
+            return prefix + "could not be published: "
+                + (p_error.palette_entry_error.has_value()
+                        ? describe(p_error.palette_entry_error.value())
+                        : godot::String("unknown palette entry failure"));
         case PaletteResourceErrorCode::palette_construction_failed:
             return p_error.palette_error.has_value()
                 ? describe(p_error.palette_error.value())
@@ -542,8 +621,15 @@ void LevelEditor::_ready() {
     grab_focus();
 
     godot::UtilityFunctions::print(
-        "[tiles] level editor ready: ", number(catalog_->entries().size()),
+        "[tiles] level editor ready: ", number(lattice_entries().size()),
         " catalog rows");
+}
+
+std::vector<const content::CanonicalPrototile *> LevelEditor::lattice_entries() const {
+    if (!catalog_.has_value()) {
+        return {};
+    }
+    return catalog_->entries_for(EDITOR_DOMAIN);
 }
 
 void LevelEditor::build_palette_rows() {
@@ -552,7 +638,7 @@ void LevelEditor::build_palette_rows() {
     }
 
     row_controls_.clear();
-    const std::vector<content::CanonicalPrototile> &entries = catalog_->entries();
+    const std::vector<const content::CanonicalPrototile *> entries = lattice_entries();
     row_controls_.reserve(entries.size());
 
     for (std::size_t index = 0; index < entries.size(); ++index) {
@@ -571,7 +657,7 @@ void LevelEditor::build_palette_rows() {
         controls.preview->set_name("Preview");
         controls.preview->set_custom_minimum_size(godot::Vector2(40.0f, 40.0f));
         controls.preview->set_mouse_filter(godot::Control::MOUSE_FILTER_IGNORE);
-        controls.preview->set_polygon(entries[index].prototile().polygon());
+        controls.preview->set_polygon(entries[index]->prototile().polygon());
         row->add_child(controls.preview);
 
         godot::VBoxContainer *body = memnew(godot::VBoxContainer);
@@ -581,7 +667,7 @@ void LevelEditor::build_palette_rows() {
 
         controls.name = memnew(godot::Label);
         controls.name->set_name("Name");
-        controls.name->set_text(godot::String(entries[index].display_name().c_str()));
+        controls.name->set_text(godot::String(entries[index]->display_name().c_str()));
         body->add_child(controls.name);
 
         godot::HBoxContainer *line = memnew(godot::HBoxContainer);
@@ -652,8 +738,9 @@ void LevelEditor::install_new_document() {
     document.resource->set_palette(palette);
     document.resource->set_region(godot::Ref<RegionResource>());
 
-    document.rows.reserve(catalog_->entries().size());
-    for (std::size_t index = 0; index < catalog_->entries().size(); ++index) {
+    const std::size_t row_count = lattice_entries().size();
+    document.rows.reserve(row_count);
+    for (std::size_t index = 0; index < row_count; ++index) {
         PaletteRow row;
         row.catalog_index = index;
         row.included = false;
@@ -712,8 +799,10 @@ bool LevelEditor::open_draft(const godot::String &p_path) {
     // values are assembled first and the active document is untouched.
     Document candidate;
     candidate.resource = level;
-    candidate.rows.reserve(catalog_->entries().size());
-    for (std::size_t index = 0; index < catalog_->entries().size(); ++index) {
+    const std::vector<const content::CanonicalPrototile *> catalog_entries =
+        lattice_entries();
+    candidate.rows.reserve(catalog_entries.size());
+    for (std::size_t index = 0; index < catalog_entries.size(); ++index) {
         PaletteRow row;
         row.catalog_index = index;
         row.included = false;
@@ -733,7 +822,8 @@ bool LevelEditor::open_draft(const godot::String &p_path) {
         level->set_palette(palette);
         repaired = true;
     } else if (!palette->get_entries().is_empty()) {
-        auto compiled = compile_palette_resource(palette, catalog_.value());
+        auto compiled =
+            compile_palette_resource(EDITOR_DOMAIN, palette, catalog_.value());
         if (!compiled) {
             set_status("cannot open " + p_path + ": " + describe(compiled.error()));
             return false;
@@ -749,8 +839,8 @@ bool LevelEditor::open_draft(const godot::String &p_path) {
             }
             const PrototileId id(static_cast<PrototileId::Value>(entry->get_prototile_id()));
             std::optional<std::size_t> row_index;
-            for (std::size_t index = 0; index < catalog_->entries().size(); ++index) {
-                if (catalog_->entries()[index].prototile().id() == id) {
+            for (std::size_t index = 0; index < catalog_entries.size(); ++index) {
+                if (catalog_entries[index]->prototile().id() == id) {
                     row_index = index;
                     break;
                 }
@@ -897,18 +987,20 @@ void LevelEditor::publish_palette(const std::vector<PaletteRow> &p_previous_rows
     // left exactly as it was found.
     godot::Ref<PaletteResource> candidate;
     candidate.instantiate();
+    const std::vector<const content::CanonicalPrototile *> catalog_entries =
+        lattice_entries();
     godot::TypedArray<PaletteEntryResource> entries;
     for (const PaletteRow &row : document_->rows) {
         if (!row.included) {
             continue;
         }
-        if (row.catalog_index >= catalog_->entries().size()) {
+        if (row.catalog_index >= catalog_entries.size()) {
             continue;
         }
         godot::Ref<PaletteEntryResource> entry;
         entry.instantiate();
         entry->set_prototile_id(static_cast<std::int64_t>(
-            catalog_->entries()[row.catalog_index].prototile().id().value()));
+            catalog_entries[row.catalog_index]->prototile().id().value()));
         entry->set_supply(row.unlimited ? -1 : row.finite_amount);
         entry->set_color(opaque(row.color));
         entries.push_back(entry);
@@ -926,7 +1018,8 @@ void LevelEditor::publish_palette(const std::vector<PaletteRow> &p_previous_rows
         return;
     }
 
-    auto compiled = compile_palette_resource(candidate, catalog_.value());
+    auto compiled =
+        compile_palette_resource(EDITOR_DOMAIN, candidate, catalog_.value());
     if (!compiled) {
         // Unreachable through these controls: rows come only from the catalog,
         // ids are unique by row identity, and supplies are constrained. Reported

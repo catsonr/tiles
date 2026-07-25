@@ -1,5 +1,6 @@
 #pragma once
 
+#include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
 #include "core/Region.h"
 #include "engine/Palette.h"
@@ -88,7 +89,8 @@ public:
     };
 
     // The authoring view of one canonical catalog entry. Identity stays in the
-    // catalog: a row stores its index, never a copied id, name, or geometry.
+    // catalog: a row stores its index into the catalog's lattice domain view,
+    // never a copied id, name, or geometry.
     struct PaletteRow final {
         std::size_t catalog_index = 0;
         bool included = false;
@@ -245,6 +247,12 @@ private:
     };
 
     bool bind_scene();
+
+    // The canonical identities this editor presents: the catalog's lattice
+    // domain view, in that domain's presentation order. Every row index, row
+    // bound, and published id is an index into this view.
+    std::vector<const content::CanonicalPrototile *> lattice_entries() const;
+
     void build_palette_rows();
     void sync_row_controls(std::size_t p_row);
     void sync_all_row_controls();

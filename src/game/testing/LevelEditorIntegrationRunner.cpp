@@ -1,5 +1,6 @@
 #include "game/testing/LevelEditorIntegrationRunner.h"
 
+#include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
 #include "core/Prototile.h"
 #include "core/geometry/Coordinate.h"
@@ -256,9 +257,12 @@ void LevelEditorIntegrationRunner::check_palette_rows() {
     if (!expect(catalog != nullptr, "the editor owns a canonical catalog")) {
         return;
     }
+    // This editor presents exactly one domain: the catalog's lattice view.
+    const std::vector<const content::CanonicalPrototile *> entries =
+        catalog->entries_for(content::GeometryDomain::lattice);
     if (!expect(
-            catalog->entries().size() == EXPECTED_ROWS,
-            "the catalog ships exactly 34 entries")) {
+            entries.size() == EXPECTED_ROWS,
+            "the catalog admits exactly 34 lattice entries")) {
         return;
     }
     if (!expect(
@@ -296,12 +300,12 @@ void LevelEditorIntegrationRunner::check_palette_rows() {
             continue;
         }
         if (name->get_text()
-            != godot::String(catalog->entries()[index].display_name().c_str())) {
+            != godot::String(entries[index]->display_name().c_str())) {
             names_match = false;
         }
         if (preview->polygon() == nullptr
             || !same_boundary(
-                *preview->polygon(), catalog->entries()[index].prototile().polygon())) {
+                *preview->polygon(), entries[index]->prototile().polygon())) {
             shapes_match = false;
         }
         if (include->is_pressed() || supply->get_selected() != 0

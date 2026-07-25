@@ -387,6 +387,8 @@ const char *describe(content::PrototileCatalogStage p_stage) {
             return "PrototileCatalogStage::polygon";
         case content::PrototileCatalogStage::prototile:
             return "PrototileCatalogStage::prototile";
+        case content::PrototileCatalogStage::hex12:
+            return "PrototileCatalogStage::hex12";
         case content::PrototileCatalogStage::catalog:
             return "PrototileCatalogStage::catalog";
     }

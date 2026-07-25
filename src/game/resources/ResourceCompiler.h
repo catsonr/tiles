@@ -1,5 +1,7 @@
 #pragma once
 
+#include "content/CanonicalOrientationCompiler.h"
+#include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
 #include "core/OrientedPrototile.h"
 #include "core/Prototile.h"
@@ -57,26 +59,31 @@ struct PolygonResourceError final {
 
 enum class PaletteResourceErrorCode {
     missing_resource,
+    unsupported_geometry_domain,
     missing_entry,
     negative_prototile_id,
     unknown_prototile_id,
+    prototile_unavailable_in_domain,
     invalid_supply,
     orientation_compilation_failed,
+    palette_entry_construction_failed,
     palette_construction_failed,
 };
 
 // Every failure tied to one authored entry populates `entry`. Id failures
 // populate the signed encoded value; once a nonnegative id has been converted,
 // unknown-id and later entry failures also populate the strong PrototileId.
-// Invalid supply populates its signed encoding. Orientation and palette
-// failures preserve the complete native errors.
+// Invalid supply populates its signed encoding. Orientation, entry, and palette
+// failures preserve the complete native errors, each populated only by the code
+// it belongs to.
 struct PaletteResourceError final {
     PaletteResourceErrorCode code;
     std::optional<std::size_t> entry;
     std::optional<std::int64_t> encoded_prototile_id;
     std::optional<std::int64_t> encoded_supply;
     std::optional<PrototileId> prototile_id;
-    std::optional<LatticeOrientationError> orientation_error;
+    std::optional<content::CanonicalOrientationCompilationError> orientation_error;
+    std::optional<engine::PaletteEntryCompilationError> palette_entry_error;
     std::optional<engine::PaletteError> palette_error;
 };
 
@@ -119,10 +126,17 @@ Result<Polygon, PolygonResourceError> compile_polygon_resource(
     const godot::Ref<PolygonResource> &p_resource);
 
 // Resolve every authored entry's id through the supplied catalog and build the
-// runtime palette in authored order. Each entry requests exactly the four
-// quarter turns; the core orientation compiler collapses geometrically
-// identical results. Authored color is read by no part of this operation.
+// runtime palette in authored order, interpreting every entry in one geometry
+// domain.
+//
+// The domain is the first argument because it governs every later step: which
+// canonical identities are admissible at all, and which exact source compiler
+// produces their orientations. An id the domain does not admit is rejected
+// rather than compiled through the other domain's compiler, and no domain
+// reaches the published palette. Authored color is read by no part of this
+// operation.
 Result<engine::Palette, PaletteResourceError> compile_palette_resource(
+    content::GeometryDomain p_domain,
     const godot::Ref<PaletteResource> &p_resource,
     const content::PrototileCatalog &p_catalog);
 
@@ -133,6 +147,9 @@ Result<Region, RegionResourceError> compile_region_resource(
 
 // Compile the palette, then the region, then pair them. Construction of the
 // level itself cannot fail: both members are already proof-bearing exact values.
+//
+// The level resource serializes no geometry domain, so it remains lattice-only
+// and compiles its palette in GeometryDomain::lattice.
 Result<engine::Level, LevelResourceError> compile_level_resource(
     const godot::Ref<LevelResource> &p_resource,
     const content::PrototileCatalog &p_catalog);
