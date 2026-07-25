@@ -60,7 +60,7 @@ reachability, symmetry groups, uniform-star construction, test totals, build
 results, headless result, and any concern for the integration formalizer in:
 
 ```text
-docs/PROJECT-HAIL-MARY-ACT-0-IMPLEMENTATION-NOTES.md
+docs/project-hail-mary/PROJECT-HAIL-MARY-ACT-0-IMPLEMENTATION-NOTES.md
 ```
 
 do not commit. do not mention this implementation document or project act in
