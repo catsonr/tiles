@@ -1,0 +1,74 @@
+name: export linux and macos
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - export-test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-linux-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: export ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux x86_64
+            runner: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            preset: Linux
+            output: exports/linux/tiles.x86_64
+            artifact: tiles-linux-x86_64
+          - label: macos universal
+            runner: macos-latest
+            platform: macos
+            arch: universal
+            preset: macOS
+            output: exports/macos/tiles.app
+            artifact: tiles-macos-universal
+
+    steps:
+      - name: check out source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - if: matrix.platform == 'linux'
+        name: install scons
+        run: sudo apt-get update && sudo apt-get install --yes scons
+
+      - if: matrix.platform == 'macos'
+        name: install scons
+        run: brew install scons
+
+      - name: build the release gdextension
+        run: scons platform=${{ matrix.platform }} target=template_release arch=${{ matrix.arch }}
+
+      - name: install godot 4.7.1 and its export templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.1
+          use-dotnet: false
+          include-templates: true
+
+      - name: export the release build
+        run: |
+          mkdir -p "$(dirname '${{ matrix.output }}')"
+          godot --headless --path godot-project --export-release "${{ matrix.preset }}" "../${{ matrix.output }}"
+
+      - name: publish the exported build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.output }}
+          if-no-files-found: error
+          retention-days: 2
