@@ -14,25 +14,37 @@ satisfactory.
 the intended sequence is:
 
 ```text
-act 0    exact hex-12 source compiler                    implemented
+act 0          exact hex-12 source compiler                 implemented
    │
    ▼
-act 1    lattice | hex12 → exact runtime palette
+act 1          lattice | hex12 → exact runtime palette      implemented
    │
    ▼
-act 2    tiling-first lattice | hex12 level editor
+act 2          tiling-first lattice | hex12 level editor    implemented
    │
    ▼
-act 2-1  arrangement → region → persistent Level resource
+act 2-1 alpha  Arrangement → exact Region
+   │
+   ▼
+act 2-1 beta   versioned proof-carrying LevelResource
+   │
+   ▼
+act 2-1 gamma  validate and export from the editor
+   │
+   ▼
+act 2-1 delta  package the editor as a distributable binary
 ```
 
 current status:
 
 ```text
-act 0    formalized and implemented
-act 1    formalized; awaiting implementation
-act 2    formalized; awaiting implementation
-act 2-1  formalized; awaiting implementation
+act 0          formalized and implemented
+act 1          formalized and implemented
+act 2          formalized and implemented
+act 2-1 alpha  formalized; awaiting implementation
+act 2-1 beta   formalized; awaits alpha implementation
+act 2-1 gamma  formalized; awaits beta implementation
+act 2-1 delta  being handled as separate binary-export work
 ```
 
 the acts are sequential but do not depend upon one another's hidden
@@ -41,8 +53,17 @@ implementation details:
 - act 1 publishes one domain-aware exact palette-compilation boundary;
 - act 2 consumes only that public boundary and publishes one exact in-memory
   blueprint arrangement;
-- act 2-1 consumes only that blueprint contract, derives its region, and
-  persists the resulting authoring witness.
+- alpha consumes only `Arrangement` and publishes exact coverage compilation;
+- beta consumes only act 2's blueprint and alpha's region compiler and publishes
+  one versioned proof-carrying resource contract;
+- gamma consumes only the editor's exact document and beta's public export
+  boundary; and
+- delta packages the completed editor without changing level meaning.
+
+the former combined
+`PROJECT-HAIL-MARY-ACT-2-1-IMPLEMENTATION.md` contract was deleted before
+implementation. alpha, beta, and gamma replace it completely; it is not a
+prerequisite and no implementor should attempt it.
 
 if formalizing an act reveals that the following act needs knowledge not
 present in the preceding act's public contract, the boundary is wrong and the
@@ -61,12 +82,13 @@ editor which:
 5. derives one connected exact `Region`, including any holes, from the
    arrangement's coverage;
 6. rejects arrangements which cannot become one valid region;
-7. saves the geometry domain, palette, and exact blueprint as a Godot
+7. exports the geometry domain, palette, and exact blueprint as a Godot
    `LevelResource`;
-8. loads or otherwise round-trips that resource through the same compiler;
+8. round-trips that artifact through the consumer resource compiler;
 9. compiles the resource into the existing runtime
    `tiles::engine::Level = Palette × Region`; and
-10. proves that replaying the saved blueprint covers its derived region exactly.
+10. proves that replaying the exported blueprint covers its derived region
+    exactly.
 
 the final product is an authoring tool which exports levels. a campaign,
 level-selection screen, production player interface, progression, scoring, and
@@ -93,21 +115,21 @@ construct exact tiling arrangement
 derive region from arrangement coverage
         │
         ▼
-save known-solvable Level resource
+export known-solvable Level resource
 ```
 
 the blueprint is simultaneously:
 
 - the object the author actually wants to make;
 - the exact source from which the target region is derived;
-- a witness that the saved level is solvable;
+- a witness that the exported level is solvable;
 - the source of exact, non-rendered region vertices; and
-- enough information to reopen and continue editing the authored level.
+- the complete geometric witness needed by the eventual level consumer.
 
 the runtime level does not begin with the blueprint arrangement installed. the
 resource compiler produces the ordinary empty-play `Level`; the stored
-blueprint is an authoring witness and may be replayed by tests or by the editor,
-not player progress.
+blueprint is an authoring witness and may be replayed by tests and compiler
+acceptance, not player progress.
 
 this replaces, rather than supplements, inverse region drawing. the current
 editor may be deleted or substantially rewritten wherever that is simpler and
@@ -226,7 +248,7 @@ tier 3 are out of scope for this roadmap.
 region construction and runtime completion use related exact facts, but they
 are not the same algorithm.
 
-act 2-1 derives a region boundary from an arrangement once during authoring or
+alpha derives a region boundary from an arrangement during authoring or
 resource compilation. runtime `State` already maintains:
 
 ```text
@@ -248,8 +270,8 @@ finite collection of contained polygonal footprints with pairwise-disjoint
 interiors cannot have equal total area while leaving a positive-area polygonal
 gap.
 
-act 2-1 must retain and test this existing completion path. it must not replace
-it with the more expensive authoring-time boundary algorithm.
+the greek acts must retain and test this existing completion path. they must not
+replace it with the more expensive authoring-time boundary algorithm.
 
 ## act 0 — exact unit hex-12 core
 
@@ -418,8 +440,8 @@ compile complete candidate into exact Arrangement
 this resembles the current palette editor's transactional publication and
 keeps the resource/compiler direction one-way. whether the act-2 in-memory
 transport is already the final Godot resource type or a smaller private draft
-type belongs to act-2 formalization; act 2-1 must not depend on an unrecorded
-choice.
+type belongs to act-2 formalization; later greek acts must not depend on an
+unrecorded choice.
 
 ### current editor
 
@@ -441,7 +463,7 @@ act 2 does not:
 
 - derive the final region;
 - define arrangement boundary extraction;
-- save or load a complete `LevelResource`;
+- export or consume a complete `LevelResource`;
 - migrate old editor documents;
 - provide a player;
 - prove campaign progression; or
@@ -466,64 +488,51 @@ documents:
 tests must establish model behavior independently of pointer coordinates and
 must include a headless integration path for both domains.
 
-## act 2-1 — region derivation and Level persistence
+## act 2-1 alpha — exact arrangement coverage
 
-### purpose
+status: formalized; awaiting implementation.
 
-turn act 2's exact blueprint arrangement into one persistent, compilable,
-known-solvable level resource.
-
-### arrangement boundary
-
-act 2-1 adds a pure exact operation equivalent to:
+alpha publishes one pure exact operation:
 
 ```haskell
 regionFromArrangement
   :: Arrangement
-  -> Result Region ArrangementBoundaryError
+  -> Result Region ArrangementRegionError
 ```
 
-this is exact geometry and belongs naturally in `tiles` core. act-2-1
-formalization may select a differently named but equivalently narrow surface.
-it must not add Godot, authored color, supply, or geometry-domain knowledge to
-core.
+it collects directed footprint edges, subdivides exact contacts into atomic
+segments, cancels internal shared segments, proves a manifold directed boundary,
+classifies one positive outer component and any negative hole cycles, and
+constructs the result through `Polygon::make` and `Region::make`.
 
-whole-edge cancellation is insufficient. valid lattice arrangements can place
-several short edges against one longer prototile edge, and the existing core
-correctly admits such partial-edge contact. the boundary derivation must:
+whole-edge cancellation is insufficient. valid arrangements may place several
+short edges against one longer edge. no coordinate may pass through floating
+point, division, interpolation, rasterization, or tolerance.
 
-1. collect every directed footprint edge;
-2. find every exact collinear overlap endpoint;
-3. split overlapping edges into atomic directed subsegments;
-4. cancel atomic subsegments covered in opposite directions;
-5. retain the uncancelled directed coverage boundary;
-6. stitch that boundary into deterministic closed rings;
-7. identify exactly one outer ring and zero or more inner rings;
-8. construct every ring through `Polygon::make`; and
-9. construct the final value through `Region::make`.
+expected rejection has exactly three authored meanings:
 
-the intended arrangement contains roughly fifty placements or fewer.
-straightforward bounded pairwise scans are appropriate. do not add a general
-polygon-boolean library, spatial index, rasterizer, tolerance, or floating
-geometry.
+- the arrangement is empty;
+- its coverage boundary is nonmanifold, including point connections and
+  pinches; or
+- its coverage has more than one positive component.
 
-typed rejection must cover at least:
+impossible consequences of the public arrangement invariant still return typed
+internal evidence rather than publishing partial geometry.
 
-- an empty arrangement;
-- more than one positive connected component;
-- point-connected or otherwise non-manifold coverage;
-- a boundary branch or open walk;
-- failure to construct a boundary polygon; and
-- failure to construct the final region.
+alpha owns no Godot, domain, palette, blueprint transport, editor, persistence,
+or runtime-completion behavior. its immutable implementation contract contains
+the complete algorithm, precedence, provenance, and native acceptance.
 
-exact error precedence and payloads belong to act-2-1 formalization.
+## act 2-1 beta — proof-carrying LevelResource
 
-### resource source graph
+status: formalized; awaits alpha implementation.
 
-the target resource shape is:
+beta turns act 2's exact blueprint records and alpha's region compiler into one
+versioned, self-contained Godot resource artifact:
 
 ```text
 LevelResource
+    ├── schema version
     ├── geometry domain
     ├── PaletteResource
     │     └── [PaletteEntryResource]
@@ -538,116 +547,129 @@ LevelResource
                   └── raw q16.48 translation y
 ```
 
-the blueprint stores exact translations as signed 64-bit raw coordinates.
-neither translation passes through `Vector2`, a decimal string, a rendered
-position, or another quantization boundary.
+the resource stores the authoring witness, not region vertices, compiled
+geometry, editor state, file identity, player progress, or history.
 
-the orientation encoding must be stable across save and load and must identify
-one exact compiled distinct orientation without relying on a transient vector
-index. the leading representation is one canonical rational turn stored as
-signed integer numerator and positive integer denominator. exact encoding and
-validation belong to act-2-1 formalization.
-
-the resource does not independently store region vertices. its region is
-derived from the exact replayed blueprint, eliminating two authorities which
-could disagree.
-
-old `PolygonResource` and `RegionResource` values may be removed if no retained
-surface needs them. no migration of existing development `.tres` levels is
-required.
-
-### resource compilation
-
-the one-way compiler performs:
+resource compilation is one-way:
 
 ```text
-validate domain
-    │
-    ▼
+validate version and domain
+        │
+        ▼
 compile palette through act 1
-    │
-    ▼
-resolve and construct every blueprint placement exactly
-    │
-    ▼
-insert every placement into Arrangement
-    │
-    ▼
-verify palette membership, orientation, and supply
-    │
-    ▼
-derive Region from arrangement coverage
-    │
-    ▼
-publish engine::Level(palette, region)
+        │
+        ▼
+decode exact blueprint records
+        │
+        ▼
+compile Arrangement through act 2
+        │
+        ▼
+compile Region through alpha
+        │
+        ▼
+publish exact authoring proof + runtime Level
 ```
 
-the compiled runtime level contains an empty play arrangement exactly as it
-does now. the resource blueprint never becomes saved player progress.
+beta must publish enough exact compiled information for both resource
+round-trip proof and gamma export without asking gamma to repeat hidden compiler
+stages. the runtime `engine::Level` remains only `Palette × Region`; any richer
+compiled-resource product is authoring support and does not enter runtime state.
 
-resource compilation is transactional and pure with respect to the resource.
-it emits no expected-input diagnostic, mutates no resource, repairs nothing,
-caches no core value inside Godot transport, and returns no partial level.
+the externally supplied blueprint receives a formalized size limit before any
+quadratic arrangement or boundary work. malformed transport is rejected with
+typed stage-specific errors and produces no partial compiled document.
 
-### saving and reopening
+the exact limit is 64 blueprint records.
 
-the editor saves through the existing Godot `ResourceSaver` mechanism. a save
-is permitted only when the complete resource compiles successfully.
+beta owns `ResourceLoader` round-trip proof because the artifact's eventual
+consumer must be able to load it. this does not imply that the authoring editor
+can open, resume, or modify an exported file.
 
-act 2-1 must also prove a round trip:
+old development `PolygonResource` and `RegionResource` compatibility remains
+unnecessary. beta formalization decides their removal together with the old
+fixtures and compiler paths.
+
+## act 2-1 gamma — export-only editor integration
+
+status: formalized; awaits beta implementation.
+
+gamma extends the act-2 editor with alpha's derived region and beta's export
+artifact.
+
+after each accepted blueprint mutation:
+
+- alpha derives a region;
+- success makes the current document exportable;
+- expected failure leaves the valid blueprint editable and unexportable; and
+- region failure never rolls back a successful blueprint edit.
+
+the exact region and typed failure are nonvisual authoring proof. gamma adds no
+region fill, outer-boundary overlay, hole-boundary overlay, target shading, or
+other region rendering.
+
+the editor has one export operation, not document persistence:
 
 ```text
-editor blueprint
-    → save LevelResource
-    → load LevelResource
-    → compile exact Level
-    → replay saved blueprint
-    → State::is_solved() == true
+authoritative in-memory document
+        │
+        ▼
+construct one fresh self-contained LevelResource
+        │
+        ▼
+compile the complete candidate through beta
+        │
+        ├── failure: write nothing
+        ▼
+filesystem save dialog for one .tres destination
+        │
+        ▼
+ResourceSaver
 ```
 
-raw coordinates, domain, ids, orientations, supplies, colors, placement count,
-derived region boundaries, and holes must survive the round trip.
+the editor does not load exported levels. it therefore owns no open action,
+loaded-document reconstruction, reusable resource path, save/save-as
+distinction, or dirty state. each export asks for its destination and writes
+one complete `.tres`.
 
-replaying the witness is a test and editor operation. runtime completion still
-uses the existing exact area comparison; it does not invoke boundary
-derivation.
+the file dialog must access the host filesystem rather than only packaged
+`res://` content. gamma proves the lower-level external-path save behavior and
+performs a bounded manual dialog pass; beta proves that the resulting artifact
+loads and compiles.
 
-### boundaries
+## act 2-1 delta — distributable editor binary
 
-act 2-1 does not:
+status: separate work in progress.
 
-- save player progress or history;
-- install the witness arrangement into a new play session;
-- privilege the witness over other solutions;
-- search for another solution;
-- generate a campaign;
-- retain inverse polygon drawing;
-- migrate old resources;
-- implement arbitrary polygon union; or
-- add another geometry domain.
+delta packages the completed editor as a distributable application, ideally a
+single executable per supported platform. platform targets, GDExtension release
+artifacts, export presets, signing, notarization, and packaged filesystem smoke
+tests belong to delta.
 
-### acceptance
+delta does not change exact geometry, resource meaning, the alpha compiler, the
+beta schema, or gamma's export operation.
 
-act 2-1, and therefore `PROJECT-HAIL-MARY`, is complete when:
+## greek-act acceptance
 
-- lattice and hex-12 blueprint documents save as registered Godot resources;
-- each saved resource loads and recompiles without loss;
-- each exact replayed blueprint is an interior-disjoint arrangement obeying its
-  palette and supply;
-- partial-edge cancellation produces the correct coverage boundary;
-- connected arrangements with holes produce one valid `Region`;
-- empty, disconnected, point-connected, and non-manifold arrangements fail
-  with typed errors and produce no level;
-- no authoritative region or translation coordinate round-trips through
-  `Vector2`;
-- the compiled runtime `Level` contains the exact derived palette and region;
-- replaying each stored witness into a fresh runtime state makes
+the greek sequence is complete when:
+
+- lattice and hex-12 arrangements derive exact regions, including holes;
+- empty, disconnected, point-connected, and nonmanifold coverage fail with
+  typed evidence;
+- the resource contains a versioned domain, palette, and exact blueprint but no
+  independently authored region;
+- every exported blueprint recompiles into an interior-disjoint arrangement
+  obeying palette membership, orientation, and supply;
+- raw coordinates, rational orientations, ids, order, supplies, colors,
+  placement count, derived boundaries, and holes survive resource round trip;
+- replaying the exported witness into a fresh runtime state makes
   `State::is_solved()` true;
-- existing runtime completion remains the exact doubled-area comparison;
-- lattice behavior remains unchanged outside the superseded editor/resource
-  workflow;
-- native tests, GDExtension build, headless integration, persistence round
-  trip, and `git diff --check` all pass together.
+- the editor writes a self-contained `.tres` to a user-selected external path
+  and never loads one;
+- existing runtime completion remains the exact doubled-area comparison; and
+- native tests, GDExtension build, headless integration, persistence round trip,
+  packaged acceptance, and `git diff --check` pass at their respective act
+  boundaries.
 
 ## project-wide invariants
 
@@ -694,31 +716,26 @@ this roadmap does not include:
 
 ## questions routed to formalization
 
-### act 1
+alpha's exact algorithm, error distinction, ordering, provenance, and test
+surface are resolved by its immutable implementation contract.
 
-- exact ids and display names for triangle, hexagon, and dodecagon;
-- the precise catalog recipe representation;
-- the checked precompiled `PaletteEntry` factory and its error type;
-- the public location and spelling of `GeometryDomain`; and
-- the domain-aware palette compiler's precise input and error surface.
+### beta
 
-### act 2
+beta's version-1 schema, 64-record limit, rich compiled authoring product,
+rational-orientation decoding, typed failures, fresh encoder, `.tres` export,
+consumer loading, replay proof, and old-region-resource removal are resolved by
+its immutable implementation contract.
 
-- the smallest usable input bindings and visible selection model;
-- which old editor code is worth retaining;
-- whether removal alone is sufficient or authoring undo belongs in this act;
-- the exact blueprint draft and construct-and-recompile boundary;
-- how exact join proposals are ordered and collapsed; and
-- the minimum palette controls needed before arrangement construction.
+### gamma
 
-### act 2-1
+gamma's nonvisual region proof, transactional edit publication, export
+enablement, external-filesystem `.tres` dialog, path normalization, absence of
+loading and document persistence, and headless/manual acceptance are resolved by
+its immutable implementation contract.
 
-- the exact arrangement-boundary algorithm, ordering, and typed errors;
-- the stable rational-orientation resource encoding;
-- the blueprint resource's placement ordering and identity;
-- how tampered resources report palette, orientation, supply, placement,
-  arrangement, and boundary failures;
-- the save-path and reopen interaction required beyond the persistence proof;
-  and
-- which superseded region resource classes and integration fixtures are
-  removed.
+### delta
+
+- supported platforms and artifact shape;
+- release GDExtension builds and export presets;
+- signing, notarization, and operating-system trust behavior; and
+- packaged external-filesystem export acceptance.
