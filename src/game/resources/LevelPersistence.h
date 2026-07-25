@@ -2,7 +2,6 @@
 
 #include "content/PrototileCatalog.h"
 #include "core/Result.h"
-#include "engine/Level.h"
 #include "game/resources/LevelResources.h"
 #include "game/resources/ResourceCompiler.h"
 
@@ -14,35 +13,44 @@
 
 namespace tiles::game {
 
-enum class SaveLevelErrorCode {
+enum class ExportLevelErrorCode {
     missing_resource,
     path_required,
     unsupported_extension,
+    compilation_failed,
     saver_failed,
 };
 
-// The complete engine error is preserved for saver_failed. Every other failure
-// is decided before the saver is reached and reports godot::OK in that field
-// rather than inventing a fake engine code.
-struct SaveLevelError final {
-    SaveLevelErrorCode code;
+// compilation_error is populated exactly for compilation_failed, and preserves
+// the complete typed compiler error. The complete engine error is preserved for
+// saver_failed; every other failure is decided before the saver is reached and
+// reports godot::OK there rather than inventing a fake engine code.
+struct ExportLevelError final {
+    ExportLevelErrorCode code;
+    std::optional<LevelResourceError> compilation_error;
     godot::Error godot_error;
 };
 
-// Persist one level resource and return the path it was written to.
+// Export one level artifact to one explicitly named `.tres` destination, and
+// return the path it was written to.
 //
-// A nonempty explicit path wins; otherwise the resource's own path is used, and
-// an empty effective path is rejected. Only `.tres` and `.res` are accepted,
-// case-insensitively. An explicit path also becomes the resource's owned path,
-// which is both initial-save and save-as behaviour; a later pathless save then
-// overwrites that owned path without changing identity.
+// This is an export, not document persistence. The destination is always
+// explicit: there is no resource-owned path, no save/save-as distinction, no
+// path takeover, no `.res` or bespoke format, and no editor document identity.
+// The resource's inherited path, every subresource path, every property value,
+// every pointer relationship, and every `changed` notification count are the
+// same afterwards as before, whether the export succeeded or failed.
 //
-// Saving deliberately performs no compilation or validation. Validity is proven
-// by the explicit compiler and at load and play time; duplicating that gate here
-// would add no protection this project needs.
-Result<godot::String, SaveLevelError> save_level_resource(
+// The complete candidate is compiled first and a compilation failure never
+// reaches the saver, so an artifact which cannot become an exact level is never
+// written. Subresources are bundled, so the written file depends on no other
+// file. Once the saver has begun, an operating-system or engine I/O failure may
+// still leave a partial file behind: that outcome is reported honestly rather
+// than promised away.
+Result<godot::String, ExportLevelError> export_level_resource(
     const godot::Ref<LevelResource> &p_resource,
-    const godot::String &p_explicit_path = godot::String());
+    const godot::String &p_explicit_path,
+    const content::PrototileCatalog &p_catalog);
 
 enum class LoadLevelErrorCode {
     path_required,
@@ -60,22 +68,27 @@ struct LoadLevelError final {
     std::optional<LevelResourceError> compilation_error;
 };
 
-// The authored resource graph together with the exact level compiled from it.
-// Both are returned because the player needs authored presentation — per-entry
-// color in authored order — beside the presentation-free exact level.
-struct LoadedLevel final {
+// The authored resource graph together with the complete exact product compiled
+// from it. Both are returned because a consumer needs authored presentation —
+// per-entry color in authored order — beside the presentation-free exact
+// values.
+struct LoadedLevelResource final {
     godot::Ref<LevelResource> resource;
-    engine::Level level;
+    CompiledLevelResource compiled;
 };
 
-// Load one persisted level resource and compile it against the supplied catalog.
+// Load one exported level artifact and compile it against the supplied catalog.
 //
-// Loading bypasses the resource cache, so asking for a path observes what is
-// persisted there rather than an older cached object or the in-memory resource
-// which was just saved to it. There is no fallback to a current resource, no
-// catalog substitution, no repair, and no partial publication: an invalid
-// persisted level fails at the typed compilation stage.
-Result<LoadedLevel, LoadLevelError> load_level_resource(
+// This is the eventual level consumer, and the round-trip proof that an
+// exported artifact is readable. Loading bypasses the resource cache deeply, so
+// asking for a path observes what is persisted there rather than an older
+// cached object or the in-memory resource which was just written to it. There
+// is no fallback to a cached resource, a current editor document, an alternate
+// type, a migration adapter, or a repaired graph: an invalid persisted level
+// fails at the typed compilation stage.
+//
+// The authoring editor never calls this and exposes no load operation.
+Result<LoadedLevelResource, LoadLevelError> load_level_resource(
     const godot::String &p_path, const content::PrototileCatalog &p_catalog);
 
 } // namespace tiles::game

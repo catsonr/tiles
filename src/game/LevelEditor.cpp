@@ -410,6 +410,8 @@ godot::String describe(const PaletteResourceError &p_error) {
             return "the palette is missing";
         case PaletteResourceErrorCode::unsupported_geometry_domain:
             return "the geometry domain is not supported";
+        case PaletteResourceErrorCode::too_many_entries:
+            return "the palette lists more tiles than this geometry domain has";
         case PaletteResourceErrorCode::missing_entry:
             return prefix + "is missing";
         case PaletteResourceErrorCode::negative_prototile_id:

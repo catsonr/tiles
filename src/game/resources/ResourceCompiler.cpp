@@ -2,42 +2,17 @@
 
 #include "content/CanonicalOrientationCompiler.h"
 #include "content/GeometryDomain.h"
+#include "core/geometry/Coordinate.h"
 #include "core/geometry/Point.h"
 #include "engine/Supply.h"
 
-#include <godot_cpp/variant/vector2.hpp>
-
+#include <limits>
 #include <utility>
 #include <vector>
 
 namespace tiles::game {
 
 namespace {
-
-// --- polygon ---
-
-PolygonResourceError polygon_missing() {
-    PolygonResourceError error {};
-    error.code = PolygonResourceErrorCode::missing_resource;
-    return error;
-}
-
-PolygonResourceError quantization_failure(
-    std::size_t p_vertex, CoordinateAxis p_axis, QuantizationError p_error) {
-    PolygonResourceError error {};
-    error.code = PolygonResourceErrorCode::coordinate_quantization_failed;
-    error.vertex = p_vertex;
-    error.axis = p_axis;
-    error.quantization_error = p_error;
-    return error;
-}
-
-PolygonResourceError polygon_construction_failure(PolygonError p_error) {
-    PolygonResourceError error {};
-    error.code = PolygonResourceErrorCode::polygon_construction_failed;
-    error.polygon_error = p_error;
-    return error;
-}
 
 // --- palette ---
 
@@ -64,12 +39,28 @@ bool is_known_domain(content::GeometryDomain p_domain) {
     return false;
 }
 
-// --- region ---
+// --- blueprint ---
 
-RegionResourceError region_failure(RegionResourceErrorCode p_code) {
-    RegionResourceError error {};
+BlueprintResourceError blueprint_failure(BlueprintResourceErrorCode p_code) {
+    BlueprintResourceError error {};
     error.code = p_code;
     return error;
+}
+
+BlueprintResourceError record_failure(
+    BlueprintResourceErrorCode p_code, std::size_t p_placement) {
+    BlueprintResourceError error = blueprint_failure(p_code);
+    error.placement = p_placement;
+    return error;
+}
+
+// Whether a signed transported component is representable as the unsigned
+// component Orientation is built from. Zero is representable and therefore
+// reaches Orientation::make, which is what preserves zero_order as an
+// orientation failure rather than a transport failure.
+bool fits_orientation_component(std::int64_t p_value) {
+    return p_value >= 0
+        && p_value <= static_cast<std::int64_t>(std::numeric_limits<Orientation::Component>::max());
 }
 
 // --- level ---
@@ -80,47 +71,33 @@ LevelResourceError level_failure(LevelResourceErrorCode p_code) {
     return error;
 }
 
-} // namespace
-
-Result<Polygon, PolygonResourceError> compile_polygon_resource(
-    const godot::Ref<PolygonResource> &p_resource) {
-    using Compiled = Result<Polygon, PolygonResourceError>;
-
-    if (p_resource.is_null()) {
-        return Compiled::failure(polygon_missing());
+// The stable serialized domain encoding, decoded. Every other signed value
+// names no domain.
+std::optional<content::GeometryDomain> decode_geometry_domain(std::int64_t p_encoded) {
+    if (p_encoded == ENCODED_GEOMETRY_DOMAIN_LATTICE) {
+        return content::GeometryDomain::lattice;
     }
-
-    const godot::PackedVector2Array vertices = p_resource->get_vertices();
-
-    std::vector<Point> points;
-    points.reserve(static_cast<std::size_t>(vertices.size()));
-    for (std::int64_t i = 0; i < vertices.size(); ++i) {
-        const std::size_t index = static_cast<std::size_t>(i);
-        const godot::Vector2 vertex = vertices[i];
-
-        // One quantization per component, in authored order, x then y. The
-        // Godot value is widened to double and handed to the single existing
-        // deterministic quantizer; nothing else converts it.
-        auto x = quantize_double(static_cast<double>(vertex.x));
-        if (!x) {
-            return Compiled::failure(
-                quantization_failure(index, CoordinateAxis::x, x.error()));
-        }
-        auto y = quantize_double(static_cast<double>(vertex.y));
-        if (!y) {
-            return Compiled::failure(
-                quantization_failure(index, CoordinateAxis::y, y.error()));
-        }
-
-        points.push_back(Point { x.value(), y.value() });
+    if (p_encoded == ENCODED_GEOMETRY_DOMAIN_HEX12) {
+        return content::GeometryDomain::hex12;
     }
-
-    auto polygon = Polygon::make(std::move(points));
-    if (!polygon) {
-        return Compiled::failure(polygon_construction_failure(polygon.error()));
-    }
-    return Compiled::success(std::move(polygon).value());
+    return std::nullopt;
 }
+
+// --- encoding ---
+
+LevelResourceEncodingError encoding_failure(LevelResourceEncodingErrorCode p_code) {
+    LevelResourceEncodingError error {};
+    error.code = p_code;
+    return error;
+}
+
+// Whether an exact unsigned value survives the signed Godot integer transport
+// unchanged.
+bool fits_signed_transport(std::uint64_t p_value) {
+    return p_value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+}
+
+} // namespace
 
 Result<engine::Palette, PaletteResourceError> compile_palette_resource(
     content::GeometryDomain p_domain,
@@ -141,9 +118,23 @@ Result<engine::Palette, PaletteResourceError> compile_palette_resource(
     }
 
     const godot::TypedArray<PaletteEntryResource> authored = p_resource->get_entries();
+    const std::size_t authored_count = static_cast<std::size_t>(authored.size());
+
+    // A palette needs distinct ids, so it can never be longer than the number
+    // of identities this domain admits. Refusing that here bounds the work an
+    // external transport can ask for before a single entry is inspected or
+    // compiled.
+    const std::size_t admitted = p_catalog.entries_for(p_domain).size();
+    if (authored_count > admitted) {
+        PaletteResourceError error =
+            palette_failure(PaletteResourceErrorCode::too_many_entries);
+        error.entry_count = authored_count;
+        error.maximum_entry_count = admitted;
+        return Compiled::failure(error);
+    }
 
     std::vector<engine::PaletteEntry> entries;
-    entries.reserve(static_cast<std::size_t>(authored.size()));
+    entries.reserve(authored_count);
 
     for (std::int64_t i = 0; i < authored.size(); ++i) {
         const std::size_t index = static_cast<std::size_t>(i);
@@ -247,79 +238,270 @@ Result<engine::Palette, PaletteResourceError> compile_palette_resource(
     return Compiled::success(std::move(palette).value());
 }
 
-Result<Region, RegionResourceError> compile_region_resource(
-    const godot::Ref<RegionResource> &p_resource) {
-    using Compiled = Result<Region, RegionResourceError>;
+Result<std::vector<engine::BlueprintPlacement>, BlueprintResourceError>
+compile_blueprint_resource(
+    const godot::TypedArray<BlueprintPlacementResource> &p_resources) {
+    using Compiled = Result<std::vector<engine::BlueprintPlacement>, BlueprintResourceError>;
 
-    if (p_resource.is_null()) {
-        return Compiled::failure(region_failure(RegionResourceErrorCode::missing_resource));
-    }
+    const std::size_t count = static_cast<std::size_t>(p_resources.size());
 
-    auto outer = compile_polygon_resource(p_resource->get_outer_boundary());
-    if (!outer) {
-        RegionResourceError error =
-            region_failure(RegionResourceErrorCode::outer_boundary_invalid);
-        error.polygon_error = outer.error();
+    // The transport boundary, answered before the record vector is reserved and
+    // before any record is read.
+    if (count > MAX_BLUEPRINT_PLACEMENTS) {
+        BlueprintResourceError error =
+            blueprint_failure(BlueprintResourceErrorCode::too_many_placements);
+        error.placement_count = count;
+        error.maximum_placement_count = MAX_BLUEPRINT_PLACEMENTS;
         return Compiled::failure(error);
     }
 
-    const godot::TypedArray<PolygonResource> authored_holes =
-        p_resource->get_inner_boundaries();
+    std::vector<engine::BlueprintPlacement> records;
+    records.reserve(count);
 
-    std::vector<Polygon> holes;
-    holes.reserve(static_cast<std::size_t>(authored_holes.size()));
-    for (std::int64_t i = 0; i < authored_holes.size(); ++i) {
-        const godot::Ref<PolygonResource> authored_hole = authored_holes[i];
-        auto hole = compile_polygon_resource(authored_hole);
-        if (!hole) {
-            RegionResourceError error =
-                region_failure(RegionResourceErrorCode::inner_boundary_invalid);
-            error.hole = static_cast<std::size_t>(i);
-            error.polygon_error = hole.error();
+    for (std::int64_t i = 0; i < p_resources.size(); ++i) {
+        const std::size_t index = static_cast<std::size_t>(i);
+
+        const godot::Ref<BlueprintPlacementResource> authored = p_resources[i];
+        if (authored.is_null()) {
+            return Compiled::failure(
+                record_failure(BlueprintResourceErrorCode::missing_placement, index));
+        }
+
+        const std::int64_t encoded_id = authored->get_prototile_id();
+        if (encoded_id < 0) {
+            BlueprintResourceError error =
+                record_failure(BlueprintResourceErrorCode::negative_prototile_id, index);
+            error.encoded_prototile_id = encoded_id;
             return Compiled::failure(error);
         }
-        holes.push_back(std::move(hole).value());
+        // Every nonnegative signed id fits the unsigned strong identity, and the
+        // sign is settled before conversion.
+        const PrototileId id(static_cast<PrototileId::Value>(encoded_id));
+
+        const std::int64_t encoded_step = authored->get_orientation_step();
+        if (!fits_orientation_component(encoded_step)) {
+            BlueprintResourceError error = record_failure(
+                BlueprintResourceErrorCode::orientation_step_out_of_range, index);
+            error.encoded_orientation_step = encoded_step;
+            return Compiled::failure(error);
+        }
+
+        const std::int64_t encoded_order = authored->get_orientation_order();
+        if (!fits_orientation_component(encoded_order)) {
+            BlueprintResourceError error = record_failure(
+                BlueprintResourceErrorCode::orientation_order_out_of_range, index);
+            error.encoded_orientation_order = encoded_order;
+            return Compiled::failure(error);
+        }
+
+        auto orientation = Orientation::make(
+            static_cast<Orientation::Component>(encoded_step),
+            static_cast<Orientation::Component>(encoded_order));
+        if (!orientation) {
+            BlueprintResourceError error =
+                record_failure(BlueprintResourceErrorCode::invalid_orientation, index);
+            error.orientation_error = orientation.error();
+            return Compiled::failure(error);
+        }
+
+        // The translation is already exact: each component is one authoritative
+        // q16.48 bit pattern, and every signed value denotes one lattice
+        // coordinate. Nothing here scales, quantizes, or rounds.
+        const Point translation {
+            Coordinate::from_raw(authored->get_translation_x_raw()),
+            Coordinate::from_raw(authored->get_translation_y_raw()),
+        };
+
+        records.push_back(
+            engine::BlueprintPlacement { id, orientation.value(), translation });
     }
 
-    auto region = Region::make(std::move(outer).value(), std::move(holes));
-    if (!region) {
-        RegionResourceError error =
-            region_failure(RegionResourceErrorCode::region_construction_failed);
-        error.region_error = region.error();
-        return Compiled::failure(error);
-    }
-    return Compiled::success(std::move(region).value());
+    return Compiled::success(std::move(records));
 }
 
-Result<engine::Level, LevelResourceError> compile_level_resource(
+Result<CompiledLevelResource, LevelResourceError> compile_level_resource(
     const godot::Ref<LevelResource> &p_resource,
     const content::PrototileCatalog &p_catalog) {
-    using Compiled = Result<engine::Level, LevelResourceError>;
+    using Compiled = Result<CompiledLevelResource, LevelResourceError>;
 
     if (p_resource.is_null()) {
         return Compiled::failure(level_failure(LevelResourceErrorCode::missing_resource));
     }
 
-    // This resource serializes no geometry domain, so it is compiled as lattice
-    // content. A later act replaces this source graph and supplies the
-    // serialized domain here.
-    auto palette = compile_palette_resource(
-        content::GeometryDomain::lattice, p_resource->get_palette(), p_catalog);
+    // One schema version is read, exactly. There is no migration, compatibility
+    // range, best-effort interpretation, or fallback: a future artifact is
+    // refused rather than half-understood.
+    const std::int64_t encoded_version = p_resource->get_format_version();
+    if (encoded_version != LEVEL_RESOURCE_FORMAT_VERSION) {
+        LevelResourceError error =
+            level_failure(LevelResourceErrorCode::unsupported_format_version);
+        error.encoded_format_version = encoded_version;
+        return Compiled::failure(error);
+    }
+
+    const std::int64_t encoded_domain = p_resource->get_geometry_domain();
+    const std::optional<content::GeometryDomain> domain =
+        decode_geometry_domain(encoded_domain);
+    if (!domain.has_value()) {
+        LevelResourceError error =
+            level_failure(LevelResourceErrorCode::unsupported_geometry_domain);
+        error.encoded_geometry_domain = encoded_domain;
+        return Compiled::failure(error);
+    }
+
+    auto palette =
+        compile_palette_resource(domain.value(), p_resource->get_palette(), p_catalog);
     if (!palette) {
         LevelResourceError error = level_failure(LevelResourceErrorCode::palette_invalid);
         error.palette_error = palette.error();
         return Compiled::failure(error);
     }
 
-    auto region = compile_region_resource(p_resource->get_region());
+    auto records = compile_blueprint_resource(p_resource->get_blueprint());
+    if (!records) {
+        LevelResourceError error =
+            level_failure(LevelResourceErrorCode::blueprint_resource_invalid);
+        error.blueprint_error = records.error();
+        return Compiled::failure(error);
+    }
+
+    auto arrangement = engine::compile_blueprint(palette.value(), records.value());
+    if (!arrangement) {
+        LevelResourceError error =
+            level_failure(LevelResourceErrorCode::blueprint_arrangement_invalid);
+        error.arrangement_error = arrangement.error();
+        return Compiled::failure(error);
+    }
+
+    // The one region this level has. It is derived from the arrangement's own
+    // coverage, so an empty blueprint fails here as an empty arrangement.
+    auto region = region_from_arrangement(arrangement.value());
     if (!region) {
-        LevelResourceError error = level_failure(LevelResourceErrorCode::region_invalid);
+        LevelResourceError error =
+            level_failure(LevelResourceErrorCode::arrangement_region_invalid);
         error.region_error = region.error();
         return Compiled::failure(error);
     }
 
-    return Compiled::success(
-        engine::Level(std::move(palette).value(), std::move(region).value()));
+    return Compiled::success(CompiledLevelResource {
+        domain.value(),
+        std::move(records).value(),
+        std::move(arrangement).value(),
+        engine::Level(std::move(palette).value(), std::move(region).value()),
+    });
+}
+
+Result<godot::Ref<LevelResource>, LevelResourceEncodingError> make_level_resource(
+    content::GeometryDomain p_domain,
+    const engine::Palette &p_palette,
+    const std::vector<godot::Color> &p_colors,
+    const std::vector<engine::BlueprintPlacement> &p_blueprint) {
+    using Encoded = Result<godot::Ref<LevelResource>, LevelResourceEncodingError>;
+
+    if (!is_known_domain(p_domain)) {
+        return Encoded::failure(
+            encoding_failure(LevelResourceEncodingErrorCode::unsupported_geometry_domain));
+    }
+
+    if (p_colors.size() != p_palette.entries().size()) {
+        LevelResourceEncodingError error =
+            encoding_failure(LevelResourceEncodingErrorCode::color_count_mismatch);
+        error.actual_count = p_colors.size();
+        error.expected_count = p_palette.entries().size();
+        return Encoded::failure(error);
+    }
+
+    // Representability is proven for the complete input before one child
+    // resource exists, so a refusal leaves nothing half-built behind.
+    for (std::size_t i = 0; i < p_palette.entries().size(); ++i) {
+        const PrototileId::Value id = p_palette.entries()[i].prototile().id().value();
+        if (!fits_signed_transport(id)) {
+            LevelResourceEncodingError error = encoding_failure(
+                LevelResourceEncodingErrorCode::prototile_id_not_representable);
+            error.entry = i;
+            error.prototile_id = id;
+            return Encoded::failure(error);
+        }
+    }
+
+    for (std::size_t i = 0; i < p_palette.entries().size(); ++i) {
+        const std::optional<engine::Supply::Amount> amount =
+            p_palette.entries()[i].supply().finite_amount();
+        if (amount.has_value() && !fits_signed_transport(amount.value())) {
+            LevelResourceEncodingError error =
+                encoding_failure(LevelResourceEncodingErrorCode::supply_not_representable);
+            error.entry = i;
+            error.supply = amount.value();
+            return Encoded::failure(error);
+        }
+    }
+
+    if (p_blueprint.size() > MAX_BLUEPRINT_PLACEMENTS) {
+        LevelResourceEncodingError error =
+            encoding_failure(LevelResourceEncodingErrorCode::too_many_placements);
+        error.actual_count = p_blueprint.size();
+        error.expected_count = MAX_BLUEPRINT_PLACEMENTS;
+        return Encoded::failure(error);
+    }
+
+    for (std::size_t i = 0; i < p_blueprint.size(); ++i) {
+        const PrototileId::Value id = p_blueprint[i].prototile_id.value();
+        if (!fits_signed_transport(id)) {
+            LevelResourceEncodingError error = encoding_failure(
+                LevelResourceEncodingErrorCode::blueprint_prototile_id_not_representable);
+            error.placement = i;
+            error.prototile_id = id;
+            return Encoded::failure(error);
+        }
+    }
+
+    godot::TypedArray<PaletteEntryResource> authored_entries;
+    for (std::size_t i = 0; i < p_palette.entries().size(); ++i) {
+        const engine::PaletteEntry &entry = p_palette.entries()[i];
+        godot::Ref<PaletteEntryResource> authored;
+        authored.instantiate();
+        authored->set_prototile_id(static_cast<std::int64_t>(entry.prototile().id().value()));
+        // Unlimited is the one sentinel; a finite capacity writes its exact
+        // positive value.
+        authored->set_supply(
+            entry.supply().is_unlimited()
+                ? std::int64_t(-1)
+                : static_cast<std::int64_t>(entry.supply().finite_amount().value()));
+        authored->set_color(p_colors[i]);
+        authored_entries.push_back(authored);
+    }
+
+    godot::Ref<PaletteResource> palette;
+    palette.instantiate();
+    palette->set_entries(authored_entries);
+
+    godot::TypedArray<BlueprintPlacementResource> authored_blueprint;
+    for (const engine::BlueprintPlacement &record : p_blueprint) {
+        godot::Ref<BlueprintPlacementResource> authored;
+        authored.instantiate();
+        authored->set_prototile_id(
+            static_cast<std::int64_t>(record.prototile_id.value()));
+        // The canonical step/order pair, and the two raw q16.48 integers
+        // exactly as the exact value already stores them.
+        authored->set_orientation_step(
+            static_cast<std::int64_t>(record.orientation.step()));
+        authored->set_orientation_order(
+            static_cast<std::int64_t>(record.orientation.order()));
+        authored->set_translation_x_raw(record.translation.x.raw());
+        authored->set_translation_y_raw(record.translation.y.raw());
+        authored_blueprint.push_back(authored);
+    }
+
+    godot::Ref<LevelResource> level;
+    level.instantiate();
+    level->set_format_version(LEVEL_RESOURCE_FORMAT_VERSION);
+    level->set_geometry_domain(
+        p_domain == content::GeometryDomain::hex12 ? ENCODED_GEOMETRY_DOMAIN_HEX12
+                                                   : ENCODED_GEOMETRY_DOMAIN_LATTICE);
+    level->set_palette(palette);
+    level->set_blueprint(authored_blueprint);
+
+    return Encoded::success(level);
 }
 
 } // namespace tiles::game

@@ -18,10 +18,9 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     // Resources first, so every class a node may construct or load already
     // exists in ClassDB. Only resource and node classes enter ClassDB: no core,
     // content, or engine value is ever bound to Godot.
-    GDREGISTER_CLASS(tiles::game::PolygonResource);
     GDREGISTER_CLASS(tiles::game::PaletteEntryResource);
     GDREGISTER_CLASS(tiles::game::PaletteResource);
-    GDREGISTER_CLASS(tiles::game::RegionResource);
+    GDREGISTER_CLASS(tiles::game::BlueprintPlacementResource);
     GDREGISTER_CLASS(tiles::game::LevelResource);
 
     // Registered only because their own dedicated test scenes instantiate them.
