@@ -59,6 +59,11 @@ constexpr float DEFAULT_VALUE = 0.95f;
 
 // --- canvas palette ---
 
+// A row's preview is its own include control: dimmed when the tile is not in
+// the palette, full strength when it is.
+const godot::Color PREVIEW_EXCLUDED(0.45f, 0.45f, 0.45f, 1.0f);
+const godot::Color PREVIEW_INCLUDED(1.0f, 1.0f, 1.0f, 1.0f);
+
 const godot::Color CANVAS_BACKGROUND(0.09f, 0.10f, 0.12f, 1.0f);
 const godot::Color AXIS_LINE(0.30f, 0.32f, 0.38f, 1.0f);
 const godot::Color GHOST_OUTLINE(1.0f, 1.0f, 1.0f, 0.85f);
@@ -87,10 +92,15 @@ const char *SELECTION_PATH = "StatusBar/Margin/Body/Line/SelectionLabel";
 
 const char *LATTICE_BUTTON = "LatticeButton";
 const char *HEX12_BUTTON = "Hex12Button";
-const char *CHOOSE_DOMAIN_BUTTON = "ChooseDomainButton";
 const char *BUILD_PALETTE_BUTTON = "BuildPaletteButton";
-const char *ROTATE_BUTTON = "RotateButton";
 const char *CLEAR_BLUEPRINT_BUTTON = "ClearBlueprintButton";
+const char *HELP_BUTTON = "HelpButton";
+
+// The whole body of the help dialog. Edit this string; nothing else reads it.
+const char *HELP_TEXT =
+    "TODO: write the help blurb here.\n";
+
+const char *HELP_DIALOG_TITLE = "help";
 
 // The two supply modes, in the order they are added to every row.
 constexpr int SUPPLY_ITEM_UNLIMITED = 0;
@@ -485,20 +495,17 @@ void LevelEditor::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_hex12_pressed"), &LevelEditor::on_hex12_pressed);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("on_choose_domain_pressed"),
-        &LevelEditor::on_choose_domain_pressed);
-    godot::ClassDB::bind_method(
         godot::D_METHOD("on_build_palette_pressed"),
         &LevelEditor::on_build_palette_pressed);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("on_rotate_pressed"), &LevelEditor::on_rotate_pressed);
-    godot::ClassDB::bind_method(
         godot::D_METHOD("on_clear_blueprint_pressed"),
         &LevelEditor::on_clear_blueprint_pressed);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("on_help_pressed"), &LevelEditor::on_help_pressed);
 
     godot::ClassDB::bind_method(
-        godot::D_METHOD("on_row_included_toggled", "pressed", "row"),
-        &LevelEditor::on_row_included_toggled);
+        godot::D_METHOD("on_row_preview_input", "event", "row"),
+        &LevelEditor::on_row_preview_input);
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_row_supply_selected", "index", "row"),
         &LevelEditor::on_row_supply_selected);
@@ -554,10 +561,9 @@ bool LevelEditor::bind_scene() {
 
     lattice_button_ = require_action(LATTICE_BUTTON);
     hex12_button_ = require_action(HEX12_BUTTON);
-    choose_domain_button_ = require_action(CHOOSE_DOMAIN_BUTTON);
     build_palette_button_ = require_action(BUILD_PALETTE_BUTTON);
-    rotate_button_ = require_action(ROTATE_BUTTON);
     clear_blueprint_button_ = require_action(CLEAR_BLUEPRINT_BUTTON);
+    help_button_ = require_action(HELP_BUTTON);
 
     // Every required child is reported once, together, rather than as a cascade
     // of null dereferences.
@@ -575,18 +581,24 @@ bool LevelEditor::bind_scene() {
     hex12_button_->connect(
         godot::StringName("pressed"),
         godot::Callable(this, godot::StringName("on_hex12_pressed")));
-    choose_domain_button_->connect(
-        godot::StringName("pressed"),
-        godot::Callable(this, godot::StringName("on_choose_domain_pressed")));
     build_palette_button_->connect(
         godot::StringName("pressed"),
         godot::Callable(this, godot::StringName("on_build_palette_pressed")));
-    rotate_button_->connect(
-        godot::StringName("pressed"),
-        godot::Callable(this, godot::StringName("on_rotate_pressed")));
     clear_blueprint_button_->connect(
         godot::StringName("pressed"),
         godot::Callable(this, godot::StringName("on_clear_blueprint_pressed")));
+    help_button_->connect(
+        godot::StringName("pressed"),
+        godot::Callable(this, godot::StringName("on_help_pressed")));
+
+    // The help dialog is owned by the editor rather than the scene, so the only
+    // authored copy of the blurb is HELP_TEXT.
+    help_dialog_ = memnew(godot::AcceptDialog);
+    help_dialog_->set_name("HelpDialog");
+    help_dialog_->set_title(HELP_DIALOG_TITLE);
+    help_dialog_->set_text(HELP_TEXT);
+    help_dialog_->set_min_size(godot::Vector2i(520, 320));
+    add_child(help_dialog_);
 
     return true;
 }
@@ -715,15 +727,12 @@ void LevelEditor::build_palette_rows() {
 
         RowControls controls;
 
-        controls.include = memnew(godot::CheckBox);
-        controls.include->set_name("Include");
-        controls.include->set_tooltip_text("include this tile in the palette");
-        row->add_child(controls.include);
-
         controls.preview = memnew(PrototilePreview);
         controls.preview->set_name("Preview");
         controls.preview->set_custom_minimum_size(godot::Vector2(40.0f, 40.0f));
-        controls.preview->set_mouse_filter(godot::Control::MOUSE_FILTER_IGNORE);
+        controls.preview->set_mouse_filter(godot::Control::MOUSE_FILTER_STOP);
+        controls.preview->set_default_cursor_shape(godot::Control::CURSOR_POINTING_HAND);
+        controls.preview->set_tooltip_text("click to include this tile in the palette");
         controls.preview->set_polygon(entries[index]->prototile().polygon());
         row->add_child(controls.preview);
 
@@ -770,10 +779,9 @@ void LevelEditor::build_palette_rows() {
         line->add_child(controls.color);
 
         const std::int64_t bound = static_cast<std::int64_t>(index);
-        controls.include->connect(
-            godot::StringName("toggled"),
-            godot::Callable(this, godot::StringName("on_row_included_toggled"))
-                .bind(bound));
+        controls.preview->connect(
+            godot::StringName("gui_input"),
+            godot::Callable(this, godot::StringName("on_row_preview_input")).bind(bound));
         controls.supply->connect(
             godot::StringName("item_selected"),
             godot::Callable(this, godot::StringName("on_row_supply_selected")).bind(bound));
@@ -850,9 +858,10 @@ void LevelEditor::sync_row_controls(std::size_t p_row) {
     const bool locked = document_->palette.has_value();
 
     suppress_row_signals_ = true;
-    if (controls.include != nullptr) {
-        controls.include->set_pressed_no_signal(row.included);
-        controls.include->set_disabled(locked);
+    if (controls.preview != nullptr) {
+        controls.preview->set_modulate(row.included ? PREVIEW_INCLUDED : PREVIEW_EXCLUDED);
+        controls.preview->set_mouse_filter(
+            locked ? godot::Control::MOUSE_FILTER_IGNORE : godot::Control::MOUSE_FILTER_STOP);
     }
     if (controls.supply != nullptr) {
         controls.supply->select(row.unlimited ? SUPPLY_ITEM_UNLIMITED : SUPPLY_ITEM_FINITE);
@@ -861,10 +870,15 @@ void LevelEditor::sync_row_controls(std::size_t p_row) {
     if (controls.amount != nullptr) {
         controls.amount->set_value_no_signal(static_cast<double>(row.finite_amount));
         controls.amount->set_editable(!locked && row.included && !row.unlimited);
+        // An amount only means something for a finite supply, so the box is only
+        // present then.
+        controls.amount->set_visible(row.included && !row.unlimited);
     }
     if (controls.color != nullptr) {
         controls.color->set_pick_color(row.color);
         controls.color->set_disabled(locked || !row.included);
+        // A color only means something for an included tile.
+        controls.color->set_visible(row.included);
     }
     suppress_row_signals_ = false;
 }
@@ -937,7 +951,7 @@ bool LevelEditor::build_palette() {
 
     set_status(
         "palette locked: " + number(document_->palette->order())
-        + " tile types — click to place the first tile at the origin");
+        + " tile types - click to place the first tile at the origin");
     refresh_controls();
     queue_redraw();
     return true;
@@ -981,6 +995,10 @@ void LevelEditor::build_entry_rows() {
         controls.select = memnew(godot::Button);
         controls.select->set_name("Select");
         controls.select->set_h_size_flags(godot::Control::SIZE_EXPAND_FILL);
+        // Toggle mode, never flat: an unselected row still has to read as a
+        // button, and the selected one is the one that looks held down.
+        controls.select->set_toggle_mode(true);
+        controls.select->set_text_alignment(godot::HORIZONTAL_ALIGNMENT_LEFT);
         const content::CanonicalPrototile *canonical =
             catalog_->find(entries[index].prototile().id());
         const godot::String label = canonical != nullptr
@@ -1043,7 +1061,7 @@ void LevelEditor::sync_entry_rows() {
                                    : entries[index].prototile().polygon());
         }
         if (controls.select != nullptr) {
-            controls.select->set_flat(!selected);
+            controls.select->set_pressed_no_signal(selected);
         }
     }
 }
@@ -1514,10 +1532,6 @@ godot::Rect2 LevelEditor::canvas_rect() const {
     return canvas_rect_;
 }
 
-godot::CheckBox *LevelEditor::row_include_control(std::size_t p_row) const {
-    return p_row < row_controls_.size() ? row_controls_[p_row].include : nullptr;
-}
-
 PrototilePreview *LevelEditor::row_preview_control(std::size_t p_row) const {
     return p_row < row_controls_.size() ? row_controls_[p_row].preview : nullptr;
 }
@@ -1565,7 +1579,7 @@ void LevelEditor::refresh_instructions() {
     if (instruction_label_ == nullptr) {
         return;
     }
-    const godot::String navigation = "\nmiddle-drag pans · wheel zooms";
+    const godot::String navigation = "\nmiddle-drag pans | wheel zooms";
     switch (phase()) {
         case EditorPhase::choose_domain:
             instruction_label_->set_text(
@@ -1579,8 +1593,8 @@ void LevelEditor::refresh_instructions() {
             return;
         case EditorPhase::build_blueprint:
             instruction_label_->set_text(
-                godot::String("left click places the ghosted tile · right click removes "
-                              "one · tab cycles tiles · r rotates")
+                godot::String("left click places the ghosted tile | right click removes "
+                              "one | tab cycles tiles | r rotates")
                 + navigation);
             return;
     }
@@ -1594,7 +1608,7 @@ void LevelEditor::refresh_selection_label() {
     const OrientedPrototile *variant = selected_variant();
     if (entry == nullptr || variant == nullptr || !document_.has_value()
         || !document_->palette.has_value()) {
-        selection_label_->set_text("—");
+        selection_label_->set_text("-");
         return;
     }
 
@@ -1602,17 +1616,16 @@ void LevelEditor::refresh_selection_label() {
         remaining_supply(document_->selection->entry);
     selection_label_->set_text(
         "tile " + number(document_->selection->entry + 1) + "/"
-        + number(document_->palette->order()) + " · orientation "
+        + number(document_->palette->order()) + " | orientation "
         + number(document_->selection->orientation + 1) + "/"
-        + number(entry->orientations().size()) + " · "
+        + number(entry->orientations().size()) + " | "
         + (remaining.has_value() ? number(remaining.value()) + " left"
                                  : godot::String("unlimited"))
-        + " · " + number(document_->records.size()) + " placed");
+        + " | " + number(document_->records.size()) + " placed");
 }
 
 void LevelEditor::refresh_controls() {
     const EditorPhase current = phase();
-    const bool has_document = document_.has_value();
 
     if (lattice_button_ != nullptr) {
         lattice_button_->set_disabled(!catalog_.has_value());
@@ -1620,14 +1633,8 @@ void LevelEditor::refresh_controls() {
     if (hex12_button_ != nullptr) {
         hex12_button_->set_disabled(!catalog_.has_value());
     }
-    if (choose_domain_button_ != nullptr) {
-        choose_domain_button_->set_disabled(!has_document);
-    }
     if (build_palette_button_ != nullptr) {
         build_palette_button_->set_disabled(current != EditorPhase::choose_palette);
-    }
-    if (rotate_button_ != nullptr) {
-        rotate_button_->set_disabled(current != EditorPhase::build_blueprint);
     }
     if (clear_blueprint_button_ != nullptr) {
         clear_blueprint_button_->set_disabled(current != EditorPhase::build_blueprint);
@@ -1653,11 +1660,11 @@ void LevelEditor::refresh_controls() {
                 break;
             case EditorPhase::choose_palette:
                 phase_label_->set_text(
-                    godot::String(domain_name(document_->domain)) + " · palette");
+                    godot::String(domain_name(document_->domain)) + " | palette");
                 break;
             case EditorPhase::build_blueprint:
                 phase_label_->set_text(
-                    godot::String(domain_name(document_->domain)) + " · blueprint");
+                    godot::String(domain_name(document_->domain)) + " | blueprint");
                 break;
         }
     }
@@ -1856,18 +1863,8 @@ void LevelEditor::on_hex12_pressed() {
     grab_focus();
 }
 
-void LevelEditor::on_choose_domain_pressed() {
-    return_to_domain_choice();
-    grab_focus();
-}
-
 void LevelEditor::on_build_palette_pressed() {
     build_palette();
-    grab_focus();
-}
-
-void LevelEditor::on_rotate_pressed() {
-    cycle_orientation(true);
     grab_focus();
 }
 
@@ -1876,11 +1873,26 @@ void LevelEditor::on_clear_blueprint_pressed() {
     grab_focus();
 }
 
-void LevelEditor::on_row_included_toggled(bool p_pressed, std::int64_t p_row) {
-    if (suppress_row_signals_ || p_row < 0) {
+void LevelEditor::on_help_pressed() {
+    if (help_dialog_ != nullptr) {
+        help_dialog_->set_text(HELP_TEXT);
+        help_dialog_->popup_centered();
+    }
+}
+
+void LevelEditor::on_row_preview_input(
+    const godot::Ref<godot::InputEvent> &p_event, std::int64_t p_row) {
+    if (suppress_row_signals_ || p_row < 0 || !document_.has_value()
+        || static_cast<std::size_t>(p_row) >= document_->rows.size()) {
         return;
     }
-    set_row_included(static_cast<std::size_t>(p_row), p_pressed);
+    const godot::Ref<godot::InputEventMouseButton> button = p_event;
+    if (button.is_null() || !button->is_pressed()
+        || button->get_button_index() != godot::MOUSE_BUTTON_LEFT) {
+        return;
+    }
+    const std::size_t row = static_cast<std::size_t>(p_row);
+    set_row_included(row, !document_->rows[row].included);
 }
 
 void LevelEditor::on_row_supply_selected(std::int64_t p_index, std::int64_t p_row) {

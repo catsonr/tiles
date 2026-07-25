@@ -367,3 +367,32 @@ resource-schema change and no serialized domain or blueprint; no runtime
 or rendering; no undo or redo; no live palette edits; no migration of old
 documents; no player; no third geometry domain; and no visual polish beyond what
 makes the three phases legible.
+
+## post-act usability pass
+
+Carson ran the manual acceptance above and asked for six presentation fixes, so
+the editor can go out to friends as a puzzle-authoring tool. All of them are in
+`LevelEditor.cpp/.h` and `main.tscn`; no engine, resource, or compiler surface
+moved, and the headless runner still reports 151/151.
+
+- Every user-visible string is ASCII. The `·` and `—` were rendering as mojibake;
+  they are now `|` and `-`. Source comments still use em dashes and are fine.
+- The `rotate` toolbar button is gone (`r` / `shift+r` already did it) and a
+  `help` button took its place, last, after `clear blueprint`. Its whole body is
+  the `HELP_TEXT` string constant near the top of `LevelEditor.cpp`, shown in an
+  editor-owned `AcceptDialog`; Carson fills it in. Nothing else reads it.
+- The `choose domain` button is gone as redundant with `lattice` / `hex12`.
+  `return_to_domain_choice()` survives as a public operation.
+- Blueprint-phase entry buttons are toggle-mode instead of `set_flat(!selected)`,
+  which made every unselected one invisible against the panel.
+- A row's color picker only exists when the tile is included, and its amount box
+  only when the supply is finite.
+- The palette-phase include check boxes are deleted. A row's polygon preview *is*
+  its include control: `mouse_filter = STOP` and the base `Control::gui_input`
+  signal, toggling through the same `set_row_included()`. `PrototilePreview` is
+  unmodified and still owns no input handling. An excluded row's preview is
+  modulated to 45%, and a locked palette returns the filter to `IGNORE`.
+
+The runner's four `row_include_control(...) == nullptr` out-of-range assertions
+now use `row_preview_control`; no assertion changed meaning. The bindings list
+under "manual acceptance" above is superseded by this section.

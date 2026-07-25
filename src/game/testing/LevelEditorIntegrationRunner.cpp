@@ -15,7 +15,6 @@
 #include "game/PrototilePreview.h"
 
 #include <godot_cpp/classes/button.hpp>
-#include <godot_cpp/classes/check_box.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/packed_scene.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -190,7 +189,7 @@ void LevelEditorIntegrationRunner::check_startup() {
     expect(!editor_->active_proposal().has_value(), "no active proposal exists at boot");
     expect(editor_->palette_rows().empty(), "no palette rows exist at boot");
     expect(
-        editor_->row_include_control(0) == nullptr,
+        editor_->row_preview_control(0) == nullptr,
         "no row controls are generated before a domain is chosen");
     expect(editor_->catalog() != nullptr, "the editor owns one canonical catalog");
 
@@ -263,7 +262,7 @@ void LevelEditorIntegrationRunner::check_domain_views() {
     expect(named, "every lattice row is named by its own catalog entry");
     expect(previewed, "every lattice row previews its own exact reference polygon");
     expect(
-        editor_->row_include_control(EXPECTED_LATTICE_ROWS) == nullptr,
+        editor_->row_preview_control(EXPECTED_LATTICE_ROWS) == nullptr,
         "there is no row past the last lattice identity");
 
     expect(
@@ -290,7 +289,7 @@ void LevelEditorIntegrationRunner::check_domain_views() {
     }
     expect(hex_ordered, "the hex-12 view is triangle, square, hexagon, dodecagon");
     expect(
-        editor_->row_include_control(EXPECTED_HEX12_ROWS) == nullptr,
+        editor_->row_preview_control(EXPECTED_HEX12_ROWS) == nullptr,
         "there is no row past the last hex-12 identity");
 }
 
@@ -343,7 +342,7 @@ void LevelEditorIntegrationRunner::check_domain_discards() {
         "returning to domain choice leaves no document");
     expect(editor_->palette_rows().empty(), "returning to domain choice discards the rows");
     expect(
-        editor_->row_include_control(0) == nullptr,
+        editor_->row_preview_control(0) == nullptr,
         "returning to domain choice removes the row controls");
     expect(
         editor_->arrangement() == nullptr,

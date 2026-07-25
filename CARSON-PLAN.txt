@@ -1,0 +1,74 @@
+by the time im writing this, project hail mary has been implemented up to ACT-2.
+this has proven hex-12 grid to work and that the editor is already fun to use!
+
+so im gonna step outside of the agentic h*ll that is this codebase and put some
+of my thoughts here so that it can be our bible. of sorts. there's still so many
+more prototiles i could put in here but i really need to put my head down now
+and make an actual game. so, and keeping in mind that the jam's theme, the theme
+which needs to be guiding ALL our game design decisions from here on out, is
+"COUNT DOWN."
+
+i had already planned to make the game have a mathematics paper feel, where each
+level has the header:
+"show that the set of prototiles { our pallete, each tile rendered and comma
+separated, with subscript showing supply } admits a tiling for the region:
+
+[ that level's region ]
+
+and i thought we could take this all the way and make it into an *exam*. with a
+timer counting down. also the questions will go from highest order to lowest
+order. and of each order, we can sort that with greatest supply to least supply.
+
+but if you dont wanna have a timer, since it's a made up constraint, there can
+be three difficulties:
+3. honors (hard mode)
+2. normal (need a better name)
+1. practice exam (no time limit)
+
+i think this is cute. and it's a very tractible design langauge. i want the game
+to legitamitely look like a exam, or a math paper. with typesetting, or at least
+computer modern for the font lol
+
+= LEVEL RENDERER
+first, we need levels being rendered into a Control. their scale should begin
+large enough s.t. the entire region fits in the Control. the user can zoom in and
+drag around with mouse, if they want, but they should not be able to pan enough
+that the region is gone. nor should they be able to zoom a crazy amount. maybe
+2-3x is enough. zoom out, say .5x . no scroll bars. the Control should look like
+a maths paper figure, of keeping the coloring of the tiles since we have that
+already. how they are rendered in the editor looks great
+
+so, white background. black, computer modern serif text. each level is labeled
+"**Problem N.** { Specific name for level, if we have one }"
+*Show that the set of prototiles {} admits a tiling for the region:*
+[Region]
+
+each level can be on its own sheet of "paper". maybe i'll find a paper texture
+too. but it's just a rectangular region. perhaps another control. which contains
+the text and levelControl. i want this heirachy so that we can rotate and translate
+the paper around to make it look animated. im not too too sure if we can rotate
+around the levelControl freely like that though, but maybe we could! then we could
+animate turning the page by rotating the current page and bringing in the next. 
+this can all be done in 2d. if not, we can find something simplier with no
+rotation.
+
+this way, all levels are in the same "exam", or "packet". select each level by
+changes pages. you need not complete the previous question to move on. 
+
+maybe we can have multipart questions for variety and if there are similar levels
+w the same motif or smth. 
+
+= DESKTOP EXPORTING
+we need to distribute for mac, windows, and linux. this should be straightforward, 
+but it's slightly complicated bc we're using gdextension. this is something ive
+not thought about at all, but obviously it's incredibly important
+
+= SCENE MANAGEMENT
+the game is simple. i want a title screen, it can have
+PLAY GAME
+CREDITS
+EXIT
+
+play game opens a menu that lets you select difficulty, then it goes to the exams
+credits can be a simple single screen that will contain [TBD]
+exit closes the game

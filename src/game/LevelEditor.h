@@ -9,8 +9,8 @@
 #include "engine/Palette.h"
 #include "engine/Supply.h"
 
+#include <godot_cpp/classes/accept_dialog.hpp>
 #include <godot_cpp/classes/button.hpp>
-#include <godot_cpp/classes/check_box.hpp>
 #include <godot_cpp/classes/color_picker_button.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/control.hpp>
@@ -198,7 +198,6 @@ public:
     // The generated control nodes, so the runner can prove the visible surface
     // really is one row per admitted identity rather than only checking internal
     // state.
-    godot::CheckBox *row_include_control(std::size_t p_row) const;
     PrototilePreview *row_preview_control(std::size_t p_row) const;
     godot::Label *row_name_control(std::size_t p_row) const;
     godot::OptionButton *row_supply_control(std::size_t p_row) const;
@@ -214,12 +213,12 @@ public:
 
     void on_lattice_pressed();
     void on_hex12_pressed();
-    void on_choose_domain_pressed();
     void on_build_palette_pressed();
-    void on_rotate_pressed();
     void on_clear_blueprint_pressed();
+    void on_help_pressed();
 
-    void on_row_included_toggled(bool p_pressed, std::int64_t p_row);
+    void on_row_preview_input(
+        const godot::Ref<godot::InputEvent> &p_event, std::int64_t p_row);
     void on_row_supply_selected(std::int64_t p_index, std::int64_t p_row);
     void on_row_amount_changed(double p_amount, std::int64_t p_row);
     void on_row_color_changed(const godot::Color &p_color, std::int64_t p_row);
@@ -236,7 +235,6 @@ private:
 
     // The controls one palette-phase row owns.
     struct RowControls final {
-        godot::CheckBox *include = nullptr;
         PrototilePreview *preview = nullptr;
         godot::Label *name = nullptr;
         godot::OptionButton *supply = nullptr;
@@ -348,10 +346,10 @@ private:
     godot::Label *phase_label_ = nullptr;
     godot::Button *lattice_button_ = nullptr;
     godot::Button *hex12_button_ = nullptr;
-    godot::Button *choose_domain_button_ = nullptr;
     godot::Button *build_palette_button_ = nullptr;
-    godot::Button *rotate_button_ = nullptr;
     godot::Button *clear_blueprint_button_ = nullptr;
+    godot::Button *help_button_ = nullptr;
+    godot::AcceptDialog *help_dialog_ = nullptr;
 
     std::vector<RowControls> row_controls_;
     std::vector<EntryControls> entry_controls_;

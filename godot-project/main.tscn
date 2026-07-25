@@ -1,22 +1,22 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cupbblqvrpra3"]
 
-[node name="LevelEditor" type="LevelEditor"]
+[node name="LevelEditor" type="LevelEditor" unique_id=482696064]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+focus_mode = 2
 
-[node name="Toolbar" type="ColorRect" parent="."]
+[node name="Toolbar" type="ColorRect" parent="." unique_id=885503068]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_bottom = 52.0
 grow_horizontal = 2
-mouse_filter = 0
 color = Color(0.14, 0.15, 0.18, 1)
 
-[node name="Margin" type="MarginContainer" parent="Toolbar"]
+[node name="Margin" type="MarginContainer" parent="Toolbar" unique_id=940906025]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -28,45 +28,43 @@ theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 6
 
-[node name="Actions" type="HBoxContainer" parent="Toolbar/Margin"]
+[node name="Actions" type="HBoxContainer" parent="Toolbar/Margin" unique_id=420687897]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="LatticeButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="LatticeButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=94882935]
 layout_mode = 2
 text = "lattice"
 
-[node name="Hex12Button" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="Hex12Button" type="Button" parent="Toolbar/Margin/Actions" unique_id=1855031280]
 layout_mode = 2
 text = "hex12"
 
-[node name="ChooseDomainButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="BuildPaletteButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=1848590270]
 layout_mode = 2
-text = "choose domain"
-
-[node name="BuildPaletteButton" type="Button" parent="Toolbar/Margin/Actions"]
-layout_mode = 2
+disabled = true
 text = "build palette"
 
-[node name="RotateButton" type="Button" parent="Toolbar/Margin/Actions"]
+[node name="ClearBlueprintButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=1752116280]
 layout_mode = 2
-text = "rotate"
-
-[node name="ClearBlueprintButton" type="Button" parent="Toolbar/Margin/Actions"]
-layout_mode = 2
+disabled = true
 text = "clear blueprint"
 
-[node name="Spacer" type="Control" parent="Toolbar/Margin/Actions"]
+[node name="HelpButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=1484937568]
+layout_mode = 2
+text = "help"
+
+[node name="Spacer" type="Control" parent="Toolbar/Margin/Actions" unique_id=1102390041]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="PhaseLabel" type="Label" parent="Toolbar/Margin/Actions"]
+[node name="PhaseLabel" type="Label" parent="Toolbar/Margin/Actions" unique_id=310751690]
 layout_mode = 2
-vertical_alignment = 1
 text = "no document"
+vertical_alignment = 1
 
-[node name="PalettePanel" type="ColorRect" parent="."]
+[node name="PalettePanel" type="ColorRect" parent="." unique_id=1199127949]
 layout_mode = 1
 anchors_preset = 9
 anchor_bottom = 1.0
@@ -74,10 +72,9 @@ offset_top = 52.0
 offset_right = 360.0
 offset_bottom = -96.0
 grow_vertical = 2
-mouse_filter = 0
 color = Color(0.12, 0.13, 0.16, 1)
 
-[node name="Margin" type="MarginContainer" parent="PalettePanel"]
+[node name="Margin" type="MarginContainer" parent="PalettePanel" unique_id=719257666]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -89,45 +86,45 @@ theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 6
 
-[node name="Body" type="VBoxContainer" parent="PalettePanel/Margin"]
+[node name="Body" type="VBoxContainer" parent="PalettePanel/Margin" unique_id=913284206]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="PaletteTitle" type="Label" parent="PalettePanel/Margin/Body"]
+[node name="PaletteTitle" type="Label" parent="PalettePanel/Margin/Body" unique_id=1226085638]
 visible = false
 layout_mode = 2
-text = "palette — include a tile, then choose its supply and color"
+text = "palette: click a tile to include it, then choose its supply and color"
 autowrap_mode = 3
 
-[node name="PaletteScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body"]
+[node name="PaletteScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body" unique_id=477082636]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="PaletteRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/PaletteScroll"]
+[node name="PaletteRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/PaletteScroll" unique_id=1096097717]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
 
-[node name="EntryTitle" type="Label" parent="PalettePanel/Margin/Body"]
+[node name="EntryTitle" type="Label" parent="PalettePanel/Margin/Body" unique_id=1870673524]
 visible = false
 layout_mode = 2
-text = "blueprint — choose a tile, rotate it, then click the canvas"
+text = "blueprint: choose a tile, rotate it, then click the canvas"
 autowrap_mode = 3
 
-[node name="EntryScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body"]
+[node name="EntryScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body" unique_id=531643309]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="EntryRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/EntryScroll"]
+[node name="EntryRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/EntryScroll" unique_id=1739805503]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
 
-[node name="StatusBar" type="ColorRect" parent="."]
+[node name="StatusBar" type="ColorRect" parent="." unique_id=1914743910]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -136,10 +133,9 @@ anchor_bottom = 1.0
 offset_top = -96.0
 grow_horizontal = 2
 grow_vertical = 0
-mouse_filter = 0
 color = Color(0.14, 0.15, 0.18, 1)
 
-[node name="Margin" type="MarginContainer" parent="StatusBar"]
+[node name="Margin" type="MarginContainer" parent="StatusBar" unique_id=1510102701]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -151,28 +147,29 @@ theme_override_constants/margin_top = 4
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 4
 
-[node name="Body" type="VBoxContainer" parent="StatusBar/Margin"]
+[node name="Body" type="VBoxContainer" parent="StatusBar/Margin" unique_id=226615425]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-[node name="InstructionLabel" type="Label" parent="StatusBar/Margin/Body"]
+[node name="InstructionLabel" type="Label" parent="StatusBar/Margin/Body" unique_id=997442451]
 layout_mode = 2
-text = "choose a geometry domain: lattice or hex12."
+text = "choose a geometry domain: lattice or hex12.
+middle-drag pans | wheel zooms"
 autowrap_mode = 3
 
-[node name="Line" type="HBoxContainer" parent="StatusBar/Margin/Body"]
+[node name="Line" type="HBoxContainer" parent="StatusBar/Margin/Body" unique_id=1467783254]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="StatusLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
+[node name="StatusLabel" type="Label" parent="StatusBar/Margin/Body/Line" unique_id=618857245]
 layout_mode = 2
 text = "choose a geometry domain"
 
-[node name="Spacer" type="Control" parent="StatusBar/Margin/Body/Line"]
+[node name="Spacer" type="Control" parent="StatusBar/Margin/Body/Line" unique_id=520882878]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="SelectionLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
+[node name="SelectionLabel" type="Label" parent="StatusBar/Margin/Body/Line" unique_id=2029469898]
 layout_mode = 2
-text = "—"
+text = "-"
