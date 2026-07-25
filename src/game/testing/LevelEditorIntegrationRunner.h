@@ -23,9 +23,8 @@ namespace tiles::game {
 // coverage proof, and its one export operation.
 //
 // It is instantiated only by its own dedicated test scene: it never enters the
-// main application scene, runs during ordinary startup, or opens a window. It
-// drives the real main scene — the same `res://main.tscn` the application boots
-// — through the editor's own public authoring operations, the very ones the UI
+// player startup scene, runs during ordinary startup, or opens a window. It
+// drives the real `res://level_editor.tscn` scene through the editor's own public authoring operations, the very ones the UI
 // callbacks call, so there is no duplicate proposal builder, blueprint
 // compiler, or alternate editor state anywhere in this file.
 class LevelEditorIntegrationRunner : public godot::Node {

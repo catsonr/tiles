@@ -48,7 +48,7 @@ namespace tiles::game {
 
 namespace {
 
-const char *MAIN_SCENE_PATH = "res://main.tscn";
+const char *EDITOR_SCENE_PATH = "res://level_editor.tscn";
 
 // Lattice catalog positions used by name below. The lattice view ships ids
 // 1..34 in order, so the zero-based row of id n is n - 1.
@@ -1907,11 +1907,11 @@ void LevelEditorIntegrationRunner::check_temporary_files_removed() {
 // --- entry point ---
 
 void LevelEditorIntegrationRunner::_ready() {
-    // The real main scene, so the checks below observe exactly what the
-    // application boots into rather than a parallel arrangement of controls.
+    // The preserved editor scene, so these checks do not accidentally exercise
+    // the application's player startup surface.
     const godot::Ref<godot::PackedScene> scene =
-        godot::ResourceLoader::get_singleton()->load(godot::String(MAIN_SCENE_PATH));
-    if (!expect(scene.is_valid(), "the main scene loads")) {
+        godot::ResourceLoader::get_singleton()->load(godot::String(EDITOR_SCENE_PATH));
+    if (!expect(scene.is_valid(), "the editor scene loads")) {
         if (get_tree() != nullptr) {
             get_tree()->quit(1);
         }
@@ -1920,7 +1920,7 @@ void LevelEditorIntegrationRunner::_ready() {
 
     godot::Node *instance = scene->instantiate();
     editor_ = godot::Object::cast_to<LevelEditor>(instance);
-    if (!expect(editor_ != nullptr, "the main scene root is a LevelEditor")) {
+    if (!expect(editor_ != nullptr, "the editor scene root is a LevelEditor")) {
         if (instance != nullptr) {
             memdelete(instance);
         }
