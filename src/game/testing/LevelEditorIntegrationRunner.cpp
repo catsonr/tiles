@@ -2,10 +2,13 @@
 
 #include "content/PrototileCatalog.h"
 #include "core/Arrangement.h"
+#include "core/ArrangementRegion.h"
 #include "core/OrientedPrototile.h"
 #include "core/Placement.h"
 #include "core/Prototile.h"
+#include "core/Region.h"
 #include "core/geometry/Coordinate.h"
+#include "core/geometry/ExactInteger.h"
 #include "core/geometry/Intersection.h"
 #include "core/geometry/Point.h"
 #include "core/geometry/Polygon.h"
@@ -13,16 +16,24 @@
 #include "engine/Palette.h"
 #include "engine/Supply.h"
 #include "game/PrototilePreview.h"
+#include "game/resources/LevelPersistence.h"
+#include "game/resources/LevelResources.h"
+#include "game/resources/ResourceCompiler.h"
 
 #include <godot_cpp/classes/button.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/file_dialog.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/packed_scene.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/node_path.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -41,8 +52,26 @@ const char *MAIN_SCENE_PATH = "res://main.tscn";
 
 // Lattice catalog positions used by name below. The lattice view ships ids
 // 1..34 in order, so the zero-based row of id n is n - 1.
+constexpr std::size_t ROW_TETROMINO_O = 0; // id 1, the 2 x 2 square tetromino
 constexpr std::size_t ROW_DOMINO = 25; // id 26, the 2 x 1 domino
 constexpr std::size_t ROW_SQUARE_1 = 26; // id 27, the unit square
+
+// The one temporary directory this run owns. It is globalized out of `user://`
+// deliberately: an exported level is an ordinary host file, so the export path
+// this runner exercises is an absolute filesystem path rather than a `res://`
+// or `user://` engine path.
+const char *TEMPORARY_DIRECTORY_SOURCE = "user://tiles_level_editor_export";
+
+// Exportable names, and names an export must refuse.
+const char *EXPORT_FILE = "level.tres";
+const char *EXPORT_UPPERCASE_FILE = "shouted.TRES";
+const char *EXPORT_EXTENSIONLESS_FILE = "extensionless";
+const char *EXPORT_EXTENSIONLESS_RESULT = "extensionless.tres";
+const char *EXPORT_SECOND_FILE = "second.tres";
+const char *EXPORT_HEX12_FILE = "hex12.tres";
+const char *EXPORT_BINARY_FILE = "refused.res";
+const char *EXPORT_FOREIGN_FILE = "refused.json";
+const char *EXPORT_OVERSIZED_FILE = "oversized.tres";
 
 constexpr std::size_t EXPECTED_LATTICE_ROWS = 34;
 constexpr std::size_t EXPECTED_HEX12_ROWS = 4;
@@ -61,6 +90,54 @@ godot::String number(std::int64_t p_value) {
 
 Point origin_point() {
     return Point { Coordinate::from_raw(0), Coordinate::from_raw(0) };
+}
+
+// One exact lattice point in whole game units. Every coordinate below is written
+// this way, so nothing here is a projected or rounded value.
+Point unit_point(std::int64_t p_x, std::int64_t p_y) {
+    return Point {
+        Coordinate::from_raw(p_x * Coordinate::SCALE),
+        Coordinate::from_raw(p_y * Coordinate::SCALE),
+    };
+}
+
+bool same_vertices(const Polygon &p_polygon, const std::vector<Point> &p_expected) {
+    if (p_polygon.vertices().size() != p_expected.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < p_expected.size(); ++i) {
+        if (p_polygon.vertices()[i] != p_expected[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The exact covered area, summed from the footprints themselves rather than read
+// back out of the derived region.
+Int256 summed_footprint_area(const Arrangement &p_arrangement) {
+    Int256 total = Int256::from_i64(0);
+    for (const Entry &entry : p_arrangement.entries()) {
+        total = total + signed_double_area(entry.placement.footprint().vertices());
+    }
+    return total;
+}
+
+// The exact doubled area of p_units whole game-unit squares of coverage.
+Int256 doubled_unit_area(std::int64_t p_units) {
+    return Int256::multiply(
+        static_cast<__int128>(2) * static_cast<__int128>(p_units)
+            * static_cast<__int128>(Coordinate::SCALE),
+        static_cast<__int128>(Coordinate::SCALE));
+}
+
+godot::String temporary_directory() {
+    return godot::ProjectSettings::get_singleton()->globalize_path(
+        godot::String(TEMPORARY_DIRECTORY_SOURCE));
+}
+
+godot::String temporary_path(const char *p_file) {
+    return temporary_directory() + "/" + p_file;
 }
 
 bool same_record(
@@ -954,6 +1031,773 @@ void LevelEditorIntegrationRunner::check_hex12_blueprint() {
     }
 }
 
+// --- the coverage proof ---
+
+bool LevelEditorIntegrationRunner::place_at(Point p_translation) {
+    std::optional<std::size_t> target;
+    for (std::size_t i = 0; i < editor_->proposals().size(); ++i) {
+        if (editor_->proposals()[i].record.translation == p_translation) {
+            target = i;
+            break;
+        }
+    }
+    if (!target.has_value()) {
+        return false;
+    }
+    // Chosen the way an author chooses one: the pointer moves to that
+    // proposal's projected handle and the ghost that was shown is the one
+    // accepted.
+    editor_->set_pointer(
+        projected_handle(*editor_, editor_->proposals()[target.value()].placement));
+    if (editor_->active_proposal() != target) {
+        return false;
+    }
+    return editor_->accept_active_proposal();
+}
+
+bool LevelEditorIntegrationRunner::proof_is_exclusive() const {
+    if (editor_->phase() != LevelEditor::EditorPhase::build_blueprint) {
+        return editor_->region() == nullptr && editor_->region_error() == nullptr;
+    }
+    const bool exactly_one =
+        (editor_->region() != nullptr) != (editor_->region_error() != nullptr);
+    const Arrangement *arrangement = editor_->arrangement();
+    return exactly_one && arrangement != nullptr
+        && arrangement->entries().size() == editor_->blueprint().size();
+}
+
+std::optional<Placement> LevelEditorIntegrationRunner::placement_of_record(
+    const engine::BlueprintPlacement &p_record) const {
+    const engine::Palette *palette = editor_->palette();
+    if (palette == nullptr) {
+        return std::nullopt;
+    }
+    for (const engine::PaletteEntry &entry : palette->entries()) {
+        if (entry.prototile().id() != p_record.prototile_id) {
+            continue;
+        }
+        for (const OrientedPrototile &variant : entry.orientations()) {
+            if (variant.orientation() != p_record.orientation) {
+                continue;
+            }
+            auto placement = Placement::make(variant, p_record.translation);
+            if (!placement) {
+                return std::nullopt;
+            }
+            return std::move(placement).value();
+        }
+    }
+    return std::nullopt;
+}
+
+void LevelEditorIntegrationRunner::check_region_proof_lifecycle() {
+    if (!expect(
+            lock_palette(
+                content::GeometryDomain::lattice,
+                { ROW_TETROMINO_O, ROW_SQUARE_1 },
+                { UNLIMITED, UNLIMITED }),
+            "a lattice palette locks for the coverage checks")) {
+        return;
+    }
+
+    // A locked palette begins with an empty arrangement and the exact empty
+    // coverage failure, not with an absent proof.
+    expect(editor_->blueprint().empty(), "a locked palette begins with no records");
+    expect(
+        editor_->arrangement() != nullptr && editor_->arrangement()->entries().empty(),
+        "a locked palette begins with an empty arrangement");
+    expect(editor_->region() == nullptr, "an empty blueprint derives no region");
+    if (expect(
+            editor_->region_error() != nullptr,
+            "an empty blueprint publishes a typed region failure")) {
+        expect(
+            editor_->region_error()->code
+                == ArrangementRegionErrorCode::empty_arrangement,
+            "the empty blueprint's failure is exactly empty_arrangement");
+    }
+    expect(proof_is_exclusive(), "a locked palette publishes exactly one proof result");
+    expect(!editor_->can_export(), "an empty blueprint cannot be exported");
+
+    // One valid placement is immediately one region.
+    expect(editor_->accept_active_proposal(), "the first placement is accepted");
+    expect(proof_is_exclusive(), "one placement publishes exactly one proof result");
+    expect(editor_->region_error() == nullptr, "one placement publishes no failure");
+    if (expect(editor_->region() != nullptr, "one placement immediately derives a region")) {
+        expect(
+            same_vertices(
+                editor_->region()->outer_boundary(),
+                { unit_point(0, 0), unit_point(2, 0), unit_point(2, 2), unit_point(0, 2) }),
+            "the derived region is exactly the placed footprint");
+        expect(
+            editor_->region()->inner_boundaries().empty(),
+            "one placement derives no hole");
+        expect(
+            editor_->region()->doubled_area() == doubled_unit_area(4),
+            "the derived region has exactly the covered area");
+    }
+    expect(editor_->can_export(), "one valid placement makes the document exportable");
+
+    // Partial-edge contact: one unit square against half of the tetromino's
+    // right edge. Whole-edge cancellation alone could not derive this.
+    editor_->select_entry(1);
+    if (expect(place_at(unit_point(2, 0)), "a partial-edge lattice placement is accepted")) {
+        expect(proof_is_exclusive(), "partial-edge coverage publishes one proof result");
+        if (expect(
+                editor_->region() != nullptr,
+                "partial-edge coverage derives one region")) {
+            expect(
+                same_vertices(
+                    editor_->region()->outer_boundary(),
+                    {
+                        unit_point(0, 0),
+                        unit_point(3, 0),
+                        unit_point(3, 1),
+                        unit_point(2, 1),
+                        unit_point(2, 2),
+                        unit_point(0, 2),
+                    }),
+                "partial-edge coverage derives the exact canonical boundary");
+            expect(
+                editor_->region()->inner_boundaries().empty(),
+                "partial-edge coverage derives no hole");
+            expect(
+                editor_->region()->doubled_area() == doubled_unit_area(5)
+                    && editor_->region()->doubled_area()
+                        == summed_footprint_area(*editor_->arrangement()),
+                "partial-edge coverage derives exactly the covered area");
+        }
+    }
+
+    // A rejected edit changes nothing at all, proof included.
+    const DocumentSnapshot before = capture();
+    expect(!editor_->remove_record(editor_->blueprint().size()), "a nonexistent record cannot be removed");
+    expect(
+        unchanged_since(before),
+        "a rejected edit preserves the records, arrangement, and proof exactly");
+
+    editor_->clear_blueprint();
+    expect(editor_->region() == nullptr, "clearing discards the derived region");
+    if (expect(
+            editor_->region_error() != nullptr,
+            "clearing republishes a typed region failure")) {
+        expect(
+            editor_->region_error()->code
+                == ArrangementRegionErrorCode::empty_arrangement,
+            "clearing returns to exactly empty_arrangement");
+    }
+    expect(proof_is_exclusive(), "clearing publishes exactly one proof result");
+    expect(!editor_->can_export(), "a cleared blueprint cannot be exported");
+    expect(
+        editor_->status_text().ends_with("add at least one tile before export"),
+        "an accepted edit reports the empty coverage concisely");
+}
+
+void LevelEditorIntegrationRunner::check_region_hole() {
+    if (!expect(
+            lock_palette(content::GeometryDomain::lattice, { ROW_SQUARE_1 }, { UNLIMITED }),
+            "a unit-square palette locks for the hole checks")) {
+        return;
+    }
+
+    // A ring of eight unit squares, each one placed against the last, enclosing
+    // exactly one empty cell.
+    expect(editor_->accept_active_proposal(), "the ring begins at exact origin");
+    const Point ring[] = {
+        unit_point(1, 0), unit_point(2, 0), unit_point(2, 1), unit_point(2, 2),
+        unit_point(1, 2), unit_point(0, 2), unit_point(0, 1),
+    };
+    bool grew = true;
+    bool exclusive = true;
+    for (const Point &translation : ring) {
+        if (!place_at(translation)) {
+            grew = false;
+            break;
+        }
+        if (!proof_is_exclusive()) {
+            exclusive = false;
+        }
+    }
+    expect(grew, "every ring placement is offered and accepted");
+    expect(exclusive, "every ring publication carries exactly one proof result");
+    if (!grew) {
+        return;
+    }
+
+    expect(editor_->blueprint().size() == 8, "the ring holds eight placements");
+    if (expect(editor_->region() != nullptr, "connected ring coverage derives one region")) {
+        expect(
+            same_vertices(
+                editor_->region()->outer_boundary(),
+                { unit_point(0, 0), unit_point(3, 0), unit_point(3, 3), unit_point(0, 3) }),
+            "the ring's outer boundary is exactly the enclosing square");
+        if (expect(
+                editor_->region()->inner_boundaries().size() == 1,
+                "the ring derives exactly one hole")) {
+            expect(
+                same_vertices(
+                    editor_->region()->inner_boundaries()[0],
+                    {
+                        unit_point(1, 1),
+                        unit_point(2, 1),
+                        unit_point(2, 2),
+                        unit_point(1, 2),
+                    }),
+                "the hole is exactly the uncovered cell");
+        }
+        expect(
+            editor_->region()->doubled_area() == doubled_unit_area(8)
+                && editor_->region()->doubled_area()
+                    == summed_footprint_area(*editor_->arrangement()),
+            "the ring's region area excludes exactly the hole");
+    }
+    expect(editor_->can_export(), "coverage with a hole is exportable");
+}
+
+void LevelEditorIntegrationRunner::check_disconnected_coverage() {
+    editor_->clear_blueprint();
+    expect(editor_->accept_active_proposal(), "the bridge fixture begins at exact origin");
+    const bool built = place_at(unit_point(1, 0)) && place_at(unit_point(2, 0));
+    if (!expect(built, "a three-tile bridge is built")) {
+        return;
+    }
+    expect(editor_->region() != nullptr, "the intact bridge derives one region");
+
+    const std::vector<engine::BlueprintPlacement> before = editor_->blueprint();
+    expect(editor_->remove_record(1), "the bridge placement is removed");
+    expect(
+        editor_->blueprint().size() == 2,
+        "removing a bridge is not rolled back by the region failure");
+    expect(
+        same_record(editor_->blueprint()[0], before[0])
+            && same_record(editor_->blueprint()[1], before[2]),
+        "removal keeps exactly the two remaining records in stored order");
+    expect(
+        editor_->arrangement() != nullptr && editor_->arrangement()->entries().size() == 2,
+        "the arrangement is republished beside the failure");
+    expect(editor_->region() == nullptr, "disconnected coverage derives no region");
+    if (expect(
+            editor_->region_error() != nullptr,
+            "disconnected coverage publishes a typed failure")) {
+        expect(
+            editor_->region_error()->code
+                == ArrangementRegionErrorCode::disconnected_coverage,
+            "the failure is exactly disconnected_coverage");
+        expect(
+            editor_->region_error()->component_points.size() == 2
+                && editor_->region_error()->component_points[0] == unit_point(0, 0)
+                && editor_->region_error()->component_points[1] == unit_point(2, 0),
+            "the failure names both components in lexicographic order");
+    }
+    expect(proof_is_exclusive(), "a disconnected publication carries exactly one result");
+    expect(!editor_->can_export(), "disconnected coverage cannot be exported");
+
+    expect(
+        editor_->status_text().ends_with("coverage is disconnected"),
+        "an accepted edit reports disconnected coverage concisely");
+
+    godot::Button *button = editor_->action_button("ExportButton");
+    expect(
+        button != nullptr && button->is_disabled(),
+        "the export button is disabled for disconnected coverage");
+}
+
+void LevelEditorIntegrationRunner::check_nonmanifold_coverage() {
+    editor_->clear_blueprint();
+    expect(editor_->accept_active_proposal(), "the pinch fixture begins at exact origin");
+    // A 3 x 3 block less its centre and one corner: every cell shares a
+    // positive-length edge with the coverage it joins, and the two ends meet at
+    // exactly one point.
+    const Point pinch[] = {
+        unit_point(1, 0), unit_point(2, 0), unit_point(2, 1),
+        unit_point(2, 2), unit_point(1, 2), unit_point(0, 1),
+    };
+    bool grew = true;
+    for (const Point &translation : pinch) {
+        if (!place_at(translation)) {
+            grew = false;
+            break;
+        }
+    }
+    if (!expect(grew, "every pinch placement is offered and accepted")) {
+        return;
+    }
+
+    expect(editor_->blueprint().size() == 7, "the pinch fixture holds seven placements");
+    expect(editor_->region() == nullptr, "pinched coverage derives no region");
+    if (expect(
+            editor_->region_error() != nullptr,
+            "pinched coverage publishes a typed failure")) {
+        expect(
+            editor_->region_error()->code
+                == ArrangementRegionErrorCode::nonmanifold_boundary_vertex,
+            "the failure is exactly nonmanifold_boundary_vertex");
+        const std::optional<NonmanifoldVertex> &vertex =
+            editor_->region_error()->nonmanifold_vertex;
+        expect(
+            vertex.has_value() && vertex->point == unit_point(1, 2),
+            "the failure names the exact pinch point");
+        expect(
+            vertex.has_value() && vertex->indegree == 2 && vertex->outdegree == 2,
+            "the pinch point carries its exact boundary degrees");
+    }
+    expect(proof_is_exclusive(), "a nonmanifold publication carries exactly one result");
+    expect(!editor_->can_export(), "pinched coverage cannot be exported");
+    expect(
+        editor_->status_text().ends_with("coverage boundary is nonmanifold"),
+        "an accepted edit reports a nonmanifold boundary concisely");
+
+    // The pinch is repairable by ordinary authoring: the valid blueprint was
+    // never rolled back, so filling the missing corner derives a region again.
+    expect(place_at(unit_point(0, 2)), "the missing corner is still offered");
+    expect(editor_->region() != nullptr, "filling the pinch derives one region again");
+    expect(editor_->can_export(), "the repaired coverage is exportable");
+}
+
+void LevelEditorIntegrationRunner::check_hex12_region() {
+    if (!expect(
+            lock_palette(
+                content::GeometryDomain::hex12,
+                { HEX_ROW_TRIANGLE, HEX_ROW_HEXAGON },
+                { UNLIMITED, UNLIMITED }),
+            "a hex-12 palette locks for the coverage checks")) {
+        return;
+    }
+
+    // One hexagon at exact origin, then triangles grown onto it through the
+    // ordinary proposal path. No hex coordinate is authored here.
+    editor_->select_entry(1);
+    expect(editor_->accept_active_proposal(), "the hexagon is placed at exact origin");
+    editor_->select_entry(0);
+    std::size_t accepted = 0;
+    bool exclusive = true;
+    for (int i = 0; i < 3; ++i) {
+        if (editor_->accept_active_proposal()) {
+            ++accepted;
+        }
+        if (!proof_is_exclusive()) {
+            exclusive = false;
+        }
+    }
+    expect(accepted == 3, "three hex-12 triangles are accepted");
+    expect(exclusive, "every hex-12 publication carries exactly one proof result");
+
+    const Arrangement *arrangement = editor_->arrangement();
+    if (!expect(
+            editor_->region() != nullptr && arrangement != nullptr,
+            "valid hex-12 coverage derives one region")) {
+        return;
+    }
+    expect(
+        editor_->region()->doubled_area() == summed_footprint_area(*arrangement),
+        "the hex-12 region's exact area is exactly the covered area");
+    expect(
+        editor_->region()->inner_boundaries().empty(),
+        "the hex-12 coverage derives no hole");
+
+    // The same coverage, rebuilt from the published records in reverse order
+    // through ordinary checked factories, derives exactly the same boundary: the
+    // installed region depends on coverage alone, not on authoring history.
+    Arrangement rebuilt;
+    bool rebuildable = true;
+    for (std::size_t offset = editor_->blueprint().size(); offset > 0; --offset) {
+        std::optional<Placement> placement =
+            placement_of_record(editor_->blueprint()[offset - 1]);
+        if (!placement.has_value() || !rebuilt.try_insert(std::move(placement).value())) {
+            rebuildable = false;
+            break;
+        }
+    }
+    if (!expect(rebuildable, "the hex-12 records rebuild one exact arrangement")) {
+        return;
+    }
+    auto independent = region_from_arrangement(rebuilt);
+    if (expect(bool(independent), "the rebuilt hex-12 coverage derives one region")) {
+        expect(
+            same_boundary(
+                independent.value().outer_boundary(), editor_->region()->outer_boundary()),
+            "the installed hex-12 region is the canonical region of its coverage");
+        expect(
+            independent.value().inner_boundaries().size()
+                == editor_->region()->inner_boundaries().size()
+                && independent.value().doubled_area() == editor_->region()->doubled_area(),
+            "the rebuilt hex-12 region agrees exactly in holes and area");
+    }
+}
+
+// --- the document, captured whole ---
+
+LevelEditorIntegrationRunner::DocumentSnapshot
+LevelEditorIntegrationRunner::capture() const {
+    DocumentSnapshot snapshot;
+    snapshot.phase = editor_->phase();
+    snapshot.domain = editor_->domain();
+    snapshot.has_document = snapshot.domain.has_value();
+    snapshot.records = editor_->blueprint();
+
+    const engine::Palette *palette = editor_->palette();
+    if (palette != nullptr) {
+        snapshot.palette_order = palette->order();
+        for (const engine::PaletteEntry &entry : palette->entries()) {
+            snapshot.palette_ids.push_back(entry.prototile().id());
+        }
+    }
+    for (std::size_t index = 0; index < snapshot.palette_order; ++index) {
+        const std::optional<godot::Color> color = editor_->entry_color(index);
+        snapshot.colors.push_back(
+            color.has_value() ? color.value() : godot::Color(0.0f, 0.0f, 0.0f, 0.0f));
+    }
+    if (editor_->arrangement() != nullptr) {
+        for (const Entry &entry : editor_->arrangement()->entries()) {
+            snapshot.arrangement_translations.push_back(entry.placement.translation());
+        }
+    }
+    if (editor_->region() != nullptr) {
+        snapshot.has_region = true;
+        snapshot.region_vertices = editor_->region()->outer_boundary().vertices();
+        snapshot.hole_count = editor_->region()->inner_boundaries().size();
+    }
+    if (editor_->region_error() != nullptr) {
+        snapshot.region_error = editor_->region_error()->code;
+    }
+    snapshot.selection = editor_->selection();
+    snapshot.active_proposal = editor_->active_proposal();
+    snapshot.proposal_count = editor_->proposals().size();
+    snapshot.pixels_per_unit = editor_->pixels_per_unit();
+    snapshot.camera_origin = editor_->camera_origin();
+    while (editor_->entry_select_control(snapshot.entry_control_count) != nullptr) {
+        ++snapshot.entry_control_count;
+    }
+    return snapshot;
+}
+
+bool LevelEditorIntegrationRunner::unchanged_since(const DocumentSnapshot &p_before) const {
+    const DocumentSnapshot now = capture();
+    if (now.has_document != p_before.has_document || now.phase != p_before.phase
+        || now.domain != p_before.domain || now.palette_order != p_before.palette_order
+        || now.palette_ids != p_before.palette_ids || now.hole_count != p_before.hole_count
+        || now.has_region != p_before.has_region
+        || now.region_error != p_before.region_error
+        || now.active_proposal != p_before.active_proposal
+        || now.proposal_count != p_before.proposal_count
+        || now.pixels_per_unit != p_before.pixels_per_unit
+        || now.camera_origin != p_before.camera_origin
+        || now.entry_control_count != p_before.entry_control_count) {
+        return false;
+    }
+    if (now.colors.size() != p_before.colors.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < now.colors.size(); ++i) {
+        if (now.colors[i] != p_before.colors[i]) {
+            return false;
+        }
+    }
+    if (!same_records(now.records, p_before.records)
+        || now.arrangement_translations != p_before.arrangement_translations
+        || now.region_vertices != p_before.region_vertices) {
+        return false;
+    }
+    if (now.selection.has_value() != p_before.selection.has_value()) {
+        return false;
+    }
+    return !now.selection.has_value()
+        || (now.selection->entry == p_before.selection->entry
+            && now.selection->orientation == p_before.selection->orientation);
+}
+
+// --- the export control and its dialog ---
+
+void LevelEditorIntegrationRunner::check_export_controls() {
+    godot::Button *button = editor_->action_button("ExportButton");
+    if (expect(button != nullptr, "the toolbar offers one export action")) {
+        expect(button->get_text() == godot::String("export .tres"), "the export action is labelled export .tres");
+    }
+
+    godot::FileDialog *dialog = godot::Object::cast_to<godot::FileDialog>(
+        editor_->get_node_or_null(godot::NodePath("ExportDialog")));
+    if (expect(dialog != nullptr, "the scene owns one export file dialog")) {
+        expect(
+            dialog->get_access() == godot::FileDialog::ACCESS_FILESYSTEM,
+            "the export dialog browses the host filesystem");
+        expect(
+            dialog->get_file_mode() == godot::FileDialog::FILE_MODE_SAVE_FILE,
+            "the export dialog saves one file");
+        const godot::PackedStringArray filters = dialog->get_filters();
+        expect(
+            filters.size() == 1 && godot::String(filters[0]).begins_with("*.tres"),
+            "the export dialog exposes only .tres");
+        expect(
+            dialog->is_customization_flag_enabled(
+                godot::FileDialog::CUSTOMIZATION_OVERWRITE_WARNING),
+            "the export dialog warns before overwriting");
+        expect(dialog->get_use_native_dialog(), "the export dialog prefers a native dialog");
+        expect(
+            dialog->get_current_file() == godot::String("level.tres"),
+            "the export dialog opens on level.tres");
+    }
+
+    // Domain phase: nothing to export, and the action says so without opening
+    // anything.
+    editor_->return_to_domain_choice();
+    expect(!editor_->can_export(), "a document-less editor cannot export");
+    expect(
+        button != nullptr && button->is_disabled(),
+        "the export button is disabled with no document");
+    editor_->on_export_pressed();
+    expect(
+        dialog == nullptr || !dialog->is_visible(),
+        "pressing export with no document does not open the dialog");
+
+    // Palette phase: still nothing to export.
+    expect(
+        editor_->choose_domain(content::GeometryDomain::lattice),
+        "a lattice document is started for the export control checks");
+    expect(!editor_->can_export(), "an unlocked palette cannot export");
+    expect(
+        button != nullptr && button->is_disabled(),
+        "the export button is disabled in palette phase");
+    editor_->on_export_pressed();
+    expect(
+        dialog == nullptr || !dialog->is_visible(),
+        "pressing export in palette phase does not open the dialog");
+
+    if (!expect(
+            lock_palette(content::GeometryDomain::lattice, { ROW_SQUARE_1 }, { UNLIMITED }),
+            "a palette locks for the export control checks")) {
+        return;
+    }
+    expect(
+        button != nullptr && button->is_disabled(),
+        "the export button is disabled while the blueprint is empty");
+    const DocumentSnapshot empty_document = capture();
+    editor_->on_export_pressed();
+    expect(
+        dialog == nullptr || !dialog->is_visible(),
+        "pressing export with an empty blueprint does not open the dialog");
+    expect(
+        unchanged_since(empty_document),
+        "a refused export press changes nothing about the document");
+
+    expect(editor_->accept_active_proposal(), "one placement is made exportable");
+    expect(editor_->can_export(), "one valid placement can be exported");
+    expect(
+        button != nullptr && !button->is_disabled(),
+        "the export button is enabled exactly when the document can be exported");
+}
+
+// --- refused destinations ---
+
+void LevelEditorIntegrationRunner::check_export_refusals() {
+    if (!expect(editor_->can_export(), "an exportable document exists for the refusal checks")) {
+        return;
+    }
+
+    const DocumentSnapshot before = capture();
+    expect(!editor_->export_document(godot::String()), "an empty path is refused");
+    expect(
+        !editor_->export_document(temporary_path(EXPORT_BINARY_FILE)),
+        "a .res destination is refused");
+    expect(
+        !editor_->export_document(temporary_path(EXPORT_FOREIGN_FILE)),
+        "a .json destination is refused");
+    expect(
+        !godot::FileAccess::file_exists(temporary_path(EXPORT_BINARY_FILE))
+            && !godot::FileAccess::file_exists(temporary_path(EXPORT_FOREIGN_FILE)),
+        "a refused destination is never written");
+    expect(
+        unchanged_since(before), "a refused export preserves the complete document");
+}
+
+// --- one written artifact, and the consumer's view of it ---
+
+void LevelEditorIntegrationRunner::check_export_round_trip() {
+    const content::PrototileCatalog *catalog = editor_->catalog();
+    if (catalog == nullptr || !expect(editor_->can_export(), "an exportable lattice document exists")) {
+        return;
+    }
+
+    const godot::String path = temporary_path(EXPORT_FILE);
+    const DocumentSnapshot before = capture();
+    if (!expect(editor_->export_document(path), "an exportable document exports")) {
+        return;
+    }
+    expect(godot::FileAccess::file_exists(path), "the export writes exactly one named file");
+    expect(unchanged_since(before), "a successful export preserves the complete document");
+    expect(
+        editor_->can_export(),
+        "a successful export leaves the blueprint editable and exportable");
+
+    // A path with no extension receives .tres, and nothing is written beside it.
+    const godot::String bare = temporary_path(EXPORT_EXTENSIONLESS_FILE);
+    expect(editor_->export_document(bare), "a path without an extension is accepted");
+    expect(
+        godot::FileAccess::file_exists(temporary_path(EXPORT_EXTENSIONLESS_RESULT)),
+        "a path without an extension receives .tres");
+    expect(!godot::FileAccess::file_exists(bare), "no extensionless file is written");
+
+    // The extension check is case-insensitive and preserves the name it was
+    // given.
+    expect(
+        editor_->export_document(temporary_path(EXPORT_UPPERCASE_FILE)),
+        "an uppercase .TRES destination is accepted");
+    expect(
+        godot::FileAccess::file_exists(temporary_path(EXPORT_UPPERCASE_FILE)),
+        "an uppercase destination is written under exactly its own name");
+
+    // Every export names its own destination: nothing is remembered between
+    // them, and the earlier artifact is untouched.
+    expect(
+        editor_->export_document(temporary_path(EXPORT_SECOND_FILE)),
+        "a second export to another destination succeeds");
+    expect(
+        godot::FileAccess::file_exists(temporary_path(EXPORT_SECOND_FILE))
+            && godot::FileAccess::file_exists(path),
+        "a later export leaves the earlier artifact in place");
+    expect(
+        !editor_->export_document(godot::String()),
+        "an empty path is still refused after a successful export: no destination is remembered");
+
+    // The consumer's view of the artifact, through beta's public loader.
+    auto loaded = load_level_resource(path, *catalog);
+    if (!expect(bool(loaded), "the exported lattice artifact loads through the consumer path")) {
+        return;
+    }
+    const CompiledLevelResource &compiled = loaded.value().compiled;
+    expect(
+        compiled.domain == content::GeometryDomain::lattice,
+        "the artifact carries the authored geometry domain");
+    expect(
+        same_records(compiled.blueprint, editor_->blueprint()),
+        "the artifact carries exactly the authored records, in order");
+    if (expect(
+            editor_->region() != nullptr, "the exported document still owns its region")) {
+        expect(
+            same_boundary(
+                compiled.level.region().outer_boundary(),
+                editor_->region()->outer_boundary()),
+            "the reloaded region is exactly the derived region");
+        expect(
+            compiled.level.region().inner_boundaries().size()
+                == editor_->region()->inner_boundaries().size()
+                && compiled.level.region().doubled_area()
+                    == editor_->region()->doubled_area(),
+            "the reloaded region agrees exactly in holes and area");
+    }
+    const engine::Palette *palette = editor_->palette();
+    if (palette != nullptr) {
+        bool same_palette = compiled.level.palette().order() == palette->order();
+        for (std::size_t i = 0;
+             i < palette->entries().size() && i < compiled.level.palette().entries().size();
+             ++i) {
+            if (compiled.level.palette().entries()[i].prototile().id()
+                    != palette->entries()[i].prototile().id()
+                || compiled.level.palette().entries()[i].supply()
+                    != palette->entries()[i].supply()) {
+                same_palette = false;
+            }
+        }
+        expect(same_palette, "the artifact carries exactly the authored palette");
+    }
+    const godot::Ref<PaletteResource> palette_resource = loaded.value().resource->get_palette();
+    if (expect(palette_resource.is_valid(), "the artifact carries its authored palette resource")) {
+        const godot::TypedArray<PaletteEntryResource> entries = palette_resource->get_entries();
+        bool same_colors = static_cast<std::size_t>(entries.size())
+            == (palette != nullptr ? palette->order() : 0);
+        for (std::int64_t i = 0; i < entries.size(); ++i) {
+            const godot::Ref<PaletteEntryResource> entry = entries[i];
+            const std::optional<godot::Color> authored =
+                editor_->entry_color(static_cast<std::size_t>(i));
+            if (entry.is_null() || !authored.has_value()
+                || entry->get_color() != authored.value()) {
+                same_colors = false;
+            }
+        }
+        expect(same_colors, "the artifact carries exactly the authored colors");
+    }
+
+    // The same proof for hex-12, whose exact coverage no lattice fixture
+    // reaches.
+    if (!expect(
+            lock_palette(
+                content::GeometryDomain::hex12,
+                { HEX_ROW_TRIANGLE, HEX_ROW_HEXAGON },
+                { UNLIMITED, UNLIMITED }),
+            "a hex-12 palette locks for the export round trip")) {
+        return;
+    }
+    editor_->select_entry(1);
+    expect(editor_->accept_active_proposal(), "the hex-12 hexagon is placed");
+    editor_->select_entry(0);
+    editor_->accept_active_proposal();
+    editor_->accept_active_proposal();
+    if (!expect(editor_->can_export(), "the hex-12 document is exportable")) {
+        return;
+    }
+
+    const godot::String hex_path = temporary_path(EXPORT_HEX12_FILE);
+    const DocumentSnapshot hex_before = capture();
+    if (!expect(editor_->export_document(hex_path), "the hex-12 document exports")) {
+        return;
+    }
+    expect(unchanged_since(hex_before), "the hex-12 export preserves the complete document");
+    auto hex_loaded = load_level_resource(hex_path, *catalog);
+    if (expect(bool(hex_loaded), "the exported hex-12 artifact loads through the consumer path")) {
+        expect(
+            hex_loaded.value().compiled.domain == content::GeometryDomain::hex12,
+            "the hex-12 artifact carries its own geometry domain");
+        expect(
+            same_records(hex_loaded.value().compiled.blueprint, editor_->blueprint()),
+            "the hex-12 artifact carries exactly the authored records");
+        expect(
+            editor_->region() != nullptr
+                && same_boundary(
+                    hex_loaded.value().compiled.level.region().outer_boundary(),
+                    editor_->region()->outer_boundary()),
+            "the reloaded hex-12 region is exactly the derived region");
+    }
+}
+
+// --- a candidate which cannot be written at all ---
+
+void LevelEditorIntegrationRunner::check_export_encoding_refusal() {
+    if (!expect(
+            lock_palette(content::GeometryDomain::lattice, { ROW_SQUARE_1 }, { UNLIMITED }),
+            "a unit-square palette locks for the oversized blueprint")) {
+        return;
+    }
+
+    // One more placement than a level artifact may carry. The blueprint itself
+    // is perfectly valid and covers one exact region; only writing it is
+    // refused.
+    expect(editor_->accept_active_proposal(), "the oversized strip begins at exact origin");
+    bool grew = true;
+    for (std::int64_t x = 1; x <= 64; ++x) {
+        if (!place_at(unit_point(x, 0))) {
+            grew = false;
+            break;
+        }
+    }
+    if (!expect(grew, "a sixty-five placement strip is built")) {
+        return;
+    }
+    expect(editor_->blueprint().size() == 65, "the strip holds sixty-five placements");
+    expect(
+        editor_->region() != nullptr && editor_->can_export(),
+        "the oversized strip is one valid region and looks exportable");
+
+    const godot::String path = temporary_path(EXPORT_OVERSIZED_FILE);
+    const DocumentSnapshot before = capture();
+    expect(
+        !editor_->export_document(path),
+        "a blueprint too large to encode is refused");
+    expect(
+        !godot::FileAccess::file_exists(path),
+        "an encoding failure writes nothing at all");
+    expect(
+        unchanged_since(before),
+        "an encoding failure preserves the complete document");
+}
+
 // --- the surfaces this act removed ---
 
 void LevelEditorIntegrationRunner::check_absent_region_and_persistence_surface() {
@@ -990,6 +1834,74 @@ void LevelEditorIntegrationRunner::check_absent_region_and_persistence_surface()
             && editor_->get_node_or_null(godot::NodePath("SaveDialog")) == nullptr
             && editor_->get_node_or_null(godot::NodePath("DiscardDialog")) == nullptr,
         "the scene owns no file or discard dialog");
+
+    // The editor exports artifacts and does not persist documents: there is no
+    // way in, and no remembered way back out.
+    expect(
+        !editor_->has_method(godot::StringName("on_open_pressed"))
+            && !editor_->has_method(godot::StringName("on_load_pressed"))
+            && !editor_->has_method(godot::StringName("on_export_as_pressed"))
+            && !editor_->has_method(godot::StringName("load_document"))
+            && !editor_->has_method(godot::StringName("save_document")),
+        "the editor binds no open, load, or save-as operation");
+    expect(
+        editor_->action_button("OpenButton") == nullptr
+            && editor_->action_button("LoadButton") == nullptr
+            && editor_->action_button("ExportAsButton") == nullptr,
+        "the toolbar offers no open, load, or export-as action");
+    expect(
+        editor_->get_node_or_null(godot::NodePath("LoadDialog")) == nullptr
+            && editor_->get_node_or_null(godot::NodePath("PathLabel")) == nullptr
+            && editor_->get_node_or_null(
+                   godot::NodePath("StatusBar/Margin/Body/Line/PathLabel"))
+                == nullptr,
+        "the scene owns no load dialog and shows no document path");
+    expect(
+        !editor_->has_method(godot::StringName("level_resource"))
+            && !editor_->has_method(godot::StringName("export_path"))
+            && !editor_->has_method(godot::StringName("is_dirty"))
+            && !editor_->has_method(godot::StringName("last_export_result")),
+        "the editor publishes no resource, path, dirty state, or export result");
+
+    // The derived region is authoring proof, not presentation: nothing draws it.
+    expect(
+        !editor_->has_method(godot::StringName("draw_region"))
+            && !editor_->has_method(godot::StringName("draw_target"))
+            && !editor_->has_method(godot::StringName("draw_region_boundary"))
+            && !editor_->has_method(godot::StringName("draw_holes")),
+        "the editor binds no region-drawing operation");
+    expect(
+        editor_->get_node_or_null(godot::NodePath("RegionOverlay")) == nullptr
+            && editor_->get_node_or_null(godot::NodePath("TargetOverlay")) == nullptr
+            && editor_->get_node_or_null(godot::NodePath("RegionPreview")) == nullptr,
+        "the scene owns no region overlay");
+}
+
+// --- temporary files ---
+
+void LevelEditorIntegrationRunner::remove_temporary(const godot::String &p_path) {
+    if (godot::FileAccess::file_exists(p_path)) {
+        godot::DirAccess::remove_absolute(p_path);
+    }
+}
+
+void LevelEditorIntegrationRunner::check_temporary_files_removed() {
+    bool all_removed = true;
+    for (const godot::String &path : temporary_paths_) {
+        if (godot::FileAccess::file_exists(path)) {
+            all_removed = false;
+        }
+    }
+    expect(all_removed, "every temporary file this run created was removed");
+
+    // The directory itself goes only when it is empty, and only by its exact
+    // name. Nothing recursive is ever removed.
+    const godot::String directory = temporary_directory();
+    if (godot::DirAccess::dir_exists_absolute(directory)
+        && godot::DirAccess::get_files_at(directory).is_empty()
+        && godot::DirAccess::get_directories_at(directory).is_empty()) {
+        godot::DirAccess::remove_absolute(directory);
+    }
 }
 
 // --- entry point ---
@@ -1019,6 +1931,28 @@ void LevelEditorIntegrationRunner::_ready() {
     }
     add_child(editor_);
 
+    // One temporary directory, and exactly the files named here. Every one is
+    // removed before this run begins and again when it ends.
+    temporary_paths_ = {
+        temporary_path(EXPORT_FILE),
+        temporary_path(EXPORT_UPPERCASE_FILE),
+        temporary_path(EXPORT_EXTENSIONLESS_FILE),
+        temporary_path(EXPORT_EXTENSIONLESS_RESULT),
+        temporary_path(EXPORT_SECOND_FILE),
+        temporary_path(EXPORT_HEX12_FILE),
+        temporary_path(EXPORT_BINARY_FILE),
+        temporary_path(EXPORT_FOREIGN_FILE),
+        temporary_path(EXPORT_OVERSIZED_FILE),
+    };
+    for (const godot::String &path : temporary_paths_) {
+        remove_temporary(path);
+    }
+    const godot::Error made =
+        godot::DirAccess::make_dir_recursive_absolute(temporary_directory());
+    expect(
+        made == godot::OK || godot::DirAccess::dir_exists_absolute(temporary_directory()),
+        "the narrow temporary directory is available");
+
     check_startup();
     check_domain_views();
     check_domain_discards();
@@ -1032,7 +1966,21 @@ void LevelEditorIntegrationRunner::_ready() {
     check_pointer_selection();
     check_drawing_inputs();
     check_hex12_blueprint();
+    check_region_proof_lifecycle();
+    check_region_hole();
+    check_disconnected_coverage();
+    check_nonmanifold_coverage();
+    check_hex12_region();
+    check_export_controls();
+    check_export_refusals();
+    check_export_round_trip();
+    check_export_encoding_refusal();
     check_absent_region_and_persistence_surface();
+
+    for (const godot::String &path : temporary_paths_) {
+        remove_temporary(path);
+    }
+    check_temporary_files_removed();
 
     if (failures_ == 0) {
         godot::UtilityFunctions::print(

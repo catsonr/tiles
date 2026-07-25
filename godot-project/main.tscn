@@ -50,6 +50,11 @@ layout_mode = 2
 disabled = true
 text = "clear blueprint"
 
+[node name="ExportButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=1091344872]
+layout_mode = 2
+disabled = true
+text = "export .tres"
+
 [node name="HelpButton" type="Button" parent="Toolbar/Margin/Actions" unique_id=1484937568]
 layout_mode = 2
 text = "help"
@@ -173,3 +178,8 @@ mouse_filter = 2
 [node name="SelectionLabel" type="Label" parent="StatusBar/Margin/Body/Line" unique_id=2029469898]
 layout_mode = 2
 text = "-"
+
+[node name="ExportDialog" type="FileDialog" parent="." unique_id=1770238811]
+title = "export level"
+size = Vector2i(720, 480)
+ok_button_text = "export"

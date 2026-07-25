@@ -3,8 +3,10 @@
 #include "content/GeometryDomain.h"
 #include "content/PrototileCatalog.h"
 #include "core/Arrangement.h"
+#include "core/ArrangementRegion.h"
 #include "core/OrientedPrototile.h"
 #include "core/Placement.h"
+#include "core/Region.h"
 #include "engine/Blueprint.h"
 #include "engine/Palette.h"
 #include "engine/Supply.h"
@@ -14,6 +16,7 @@
 #include <godot_cpp/classes/color_picker_button.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/file_dialog.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/option_button.hpp>
@@ -50,9 +53,18 @@ class PrototilePreview;
 // polygon ever re-enters the model: the pointer only ranks already-exact
 // proposals and chooses already-stored record indices.
 //
-// The record vector is the reconstructable authority and the arrangement is the
-// complete proof produced from it. They are published together, by one
+// The record vector is the reconstructable authority, the arrangement is the
+// complete proof produced from it, and the derived region is the proof that the
+// coverage is one exportable target. All three are published together, by one
 // transactional recompilation of the whole candidate, and never drift.
+//
+// The derived region is nonvisual: it decides whether the document can be
+// exported and it names the exact reason when it cannot. Nothing draws it.
+//
+// The editor exports artifacts and does not persist documents. There is no
+// open, load, save, or save-as operation, no owned resource, no remembered
+// destination, and no dirty state: every export names its own destination and
+// writes one complete file.
 class LevelEditor : public godot::Control {
     GDCLASS(LevelEditor, godot::Control)
 
@@ -136,6 +148,19 @@ public:
 
     void clear_blueprint();
 
+    // --- export, which is the document's one outward operation ---
+
+    // Encode the current document as one completely fresh level resource and
+    // write it to one explicitly named `.tres` destination.
+    //
+    // Eligibility is rechecked here rather than trusted from a control's enabled
+    // state, the path is normalized or rejected before anything is built, and
+    // the complete candidate is compiled by the exporter before the saver is
+    // reached. Nothing about the document changes, whether the attempt succeeds
+    // or fails: no resource, path, or result is retained and the author may keep
+    // editing and export again to another destination.
+    bool export_document(const godot::String &p_path);
+
     // --- pointer, which is presentation only ---
 
     // Record the last local pointer position and re-rank the cached proposals
@@ -167,6 +192,17 @@ public:
 
     const std::vector<engine::BlueprintPlacement> &blueprint() const;
     const Arrangement *arrangement() const;
+
+    // The blueprint's coverage as one exact region, or the exact typed reason it
+    // is not one. In blueprint phase exactly one of them exists; in domain and
+    // palette phase neither does. Both are read-only views which stay valid only
+    // while the document is unchanged.
+    const Region *region() const;
+    const ArrangementRegionError *region_error() const;
+
+    // Whether this document could be exported right now. Control enablement is
+    // presentation; every export operation asks this question again for itself.
+    bool can_export() const;
 
     std::optional<Selection> selection() const;
     const OrientedPrototile *selected_variant() const;
@@ -215,6 +251,8 @@ public:
     void on_hex12_pressed();
     void on_build_palette_pressed();
     void on_clear_blueprint_pressed();
+    void on_export_pressed();
+    void on_export_file_selected(const godot::String &p_path);
     void on_help_pressed();
 
     void on_row_preview_input(
@@ -261,6 +299,12 @@ private:
         std::vector<godot::Color> colors;
         std::vector<engine::BlueprintPlacement> records;
         Arrangement arrangement;
+        // The coverage proof, of which exactly one alternative is populated
+        // whenever a palette is locked. It is derived from the arrangement and
+        // published with it; it is never a second geometry authority and it is
+        // never drawn.
+        std::optional<Region> region;
+        std::optional<ArrangementRegionError> region_error;
         std::optional<Selection> selection;
     };
 
@@ -276,8 +320,13 @@ private:
     void sync_entry_rows();
 
     // Publish one candidate record sequence only if the complete candidate
-    // compiles. The current records and arrangement survive every failure.
+    // compiles. The current records, arrangement, and coverage proof survive
+    // every failure, and a candidate which compiles but does not cover one
+    // region is published together with its typed reason rather than rejected.
     bool publish(std::vector<engine::BlueprintPlacement> p_candidate);
+
+    // The current coverage proof as one concise author-facing sentence.
+    godot::String proof_summary() const;
 
     // Re-derive the offered additions for the current selection and blueprint,
     // then re-rank them against the last pointer position. Pure with respect to
@@ -348,8 +397,10 @@ private:
     godot::Button *hex12_button_ = nullptr;
     godot::Button *build_palette_button_ = nullptr;
     godot::Button *clear_blueprint_button_ = nullptr;
+    godot::Button *export_button_ = nullptr;
     godot::Button *help_button_ = nullptr;
     godot::AcceptDialog *help_dialog_ = nullptr;
+    godot::FileDialog *export_dialog_ = nullptr;
 
     std::vector<RowControls> row_controls_;
     std::vector<EntryControls> entry_controls_;

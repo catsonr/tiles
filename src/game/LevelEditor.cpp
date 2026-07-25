@@ -10,6 +10,7 @@
 #include "core/geometry/Predicates.h"
 #include "core/geometry/Triangle.h"
 #include "game/PrototilePreview.h"
+#include "game/resources/LevelPersistence.h"
 #include "game/resources/LevelResources.h"
 #include "game/resources/ResourceCompiler.h"
 
@@ -90,11 +91,23 @@ const char *INSTRUCTION_PATH = "StatusBar/Margin/Body/InstructionLabel";
 const char *STATUS_PATH = "StatusBar/Margin/Body/Line/StatusLabel";
 const char *SELECTION_PATH = "StatusBar/Margin/Body/Line/SelectionLabel";
 
+const char *EXPORT_DIALOG_PATH = "ExportDialog";
+
 const char *LATTICE_BUTTON = "LatticeButton";
 const char *HEX12_BUTTON = "Hex12Button";
 const char *BUILD_PALETTE_BUTTON = "BuildPaletteButton";
 const char *CLEAR_BLUEPRINT_BUTTON = "ClearBlueprintButton";
+const char *EXPORT_BUTTON = "ExportButton";
 const char *HELP_BUTTON = "HelpButton";
+
+// --- export ---
+
+// The one extension an exported level may carry, and the presentation hint the
+// dialog opens with every time.
+const char *EXPORT_EXTENSION = "tres";
+const char *DEFAULT_EXPORT_FILENAME = "level.tres";
+const char *EXPORT_FILTER = "*.tres";
+const char *EXPORT_FILTER_DESCRIPTION = "tiles level";
 
 // The whole body of the help dialog. Edit this string; nothing else reads it.
 const char *HELP_TEXT =
@@ -145,6 +158,31 @@ godot::String number(std::size_t p_value) {
 
 godot::String number(std::uint64_t p_value) {
     return godot::String::num_uint64(p_value);
+}
+
+// The one export path rule, used by every export attempt whatever selected the
+// path:
+//
+//     no extension                -> `.tres` is appended
+//     `.tres`, case-insensitively -> preserved exactly
+//     any other extension         -> rejected
+//     empty                       -> rejected
+//
+// A wrong extension is never replaced and never appended to, `.res` is not an
+// alias, and no destination is ever inferred from a resource, the project, the
+// process working directory, or a previous export.
+std::optional<godot::String> normalize_export_path(const godot::String &p_path) {
+    if (p_path.is_empty()) {
+        return std::nullopt;
+    }
+    const godot::String extension = p_path.get_extension();
+    if (extension.is_empty()) {
+        return p_path + godot::String(".") + godot::String(EXPORT_EXTENSION);
+    }
+    if (extension.to_lower() == godot::String(EXPORT_EXTENSION)) {
+        return p_path;
+    }
+    return std::nullopt;
 }
 
 bool is_supported_domain(content::GeometryDomain p_domain) {
@@ -487,6 +525,160 @@ godot::String describe(const engine::BlueprintCompilationError &p_error) {
     return "unknown blueprint failure";
 }
 
+// The three expected coverage outcomes are ordinary authoring states and are
+// named the way an author can act on them: no coordinate, incidence count,
+// component point, or enumerator name appears. The fourth is not an authoring
+// state at all, so it says so plainly here and reports its exact typed evidence
+// to the developer separately.
+godot::String describe(const ArrangementRegionError &p_error) {
+    switch (p_error.code) {
+        case ArrangementRegionErrorCode::empty_arrangement:
+            return "add at least one tile before export";
+        case ArrangementRegionErrorCode::nonmanifold_boundary_vertex:
+            return "coverage boundary is nonmanifold";
+        case ArrangementRegionErrorCode::disconnected_coverage:
+            return "coverage is disconnected";
+        case ArrangementRegionErrorCode::internal_invariant_failure:
+            return "the coverage geometry failed an internal check";
+    }
+    return "the coverage is not one region";
+}
+
+// Enough typed detail to identify which internal geometry invariant did not
+// hold. This never reaches the author: an internal failure means this build is
+// broken, and a developer needs the kind, not a reassurance.
+godot::String describe_invariant(const ArrangementRegionInvariantFailure &p_failure) {
+    switch (p_failure.code) {
+        case ArrangementRegionInvariantFailureCode::unsupported_boundary_crossing:
+            return "two footprint edges cross";
+        case ArrangementRegionInvariantFailureCode::invalid_segment_multiplicity:
+            return "one atomic boundary segment has an impossible incidence count"
+                + (p_failure.multiplicity.has_value()
+                        ? " (" + number(p_failure.multiplicity->contributing_edges.size())
+                            + " contributing edges)"
+                        : godot::String());
+        case ArrangementRegionInvariantFailureCode::open_boundary_walk:
+            return "a boundary walk did not close";
+        case ArrangementRegionInvariantFailureCode::repeated_boundary_vertex:
+            return "a boundary walk revisited a vertex";
+        case ArrangementRegionInvariantFailureCode::zero_area_boundary:
+            return "a retained boundary cycle encloses no area";
+        case ArrangementRegionInvariantFailureCode::no_outer_boundary:
+            return "no positive boundary component was found";
+        case ArrangementRegionInvariantFailureCode::polygon_construction_failed:
+            return "a boundary cycle is not a simple polygon"
+                + (p_failure.polygon_failure.has_value()
+                        ? ": " + describe(p_failure.polygon_failure->error)
+                        : godot::String());
+        case ArrangementRegionInvariantFailureCode::region_construction_failed:
+            return "the outer boundary and its holes are not one region";
+        case ArrangementRegionInvariantFailureCode::area_mismatch:
+            return "the derived region's area differs from the covered area";
+    }
+    return "an unnamed internal geometry failure";
+}
+
+godot::String describe(OrientationError p_error) {
+    switch (p_error) {
+        case OrientationError::zero_order:
+            return "an orientation with order zero";
+    }
+    return "an invalid orientation";
+}
+
+godot::String describe(const BlueprintResourceError &p_error) {
+    godot::String prefix = p_error.placement.has_value()
+        ? "placement " + number(p_error.placement.value()) + " "
+        : godot::String();
+    switch (p_error.code) {
+        case BlueprintResourceErrorCode::too_many_placements:
+            return "the blueprint holds more placements than one level may carry";
+        case BlueprintResourceErrorCode::missing_placement:
+            return prefix + "is missing";
+        case BlueprintResourceErrorCode::negative_prototile_id:
+            return prefix + "has a negative prototile id";
+        case BlueprintResourceErrorCode::orientation_step_out_of_range:
+            return prefix + "has an orientation step outside the representable range";
+        case BlueprintResourceErrorCode::orientation_order_out_of_range:
+            return prefix + "has an orientation order outside the representable range";
+        case BlueprintResourceErrorCode::invalid_orientation:
+            return prefix + "names "
+                + (p_error.orientation_error.has_value()
+                        ? describe(p_error.orientation_error.value())
+                        : godot::String("an invalid orientation"));
+    }
+    return "unknown blueprint transport failure";
+}
+
+godot::String describe(const LevelResourceError &p_error) {
+    switch (p_error.code) {
+        case LevelResourceErrorCode::missing_resource:
+            return "the level is missing";
+        case LevelResourceErrorCode::unsupported_format_version:
+            return "the level uses an unsupported format version";
+        case LevelResourceErrorCode::unsupported_geometry_domain:
+            return "the level names an unsupported geometry domain";
+        case LevelResourceErrorCode::palette_invalid:
+            return p_error.palette_error.has_value()
+                ? describe(p_error.palette_error.value())
+                : godot::String("the palette is invalid");
+        case LevelResourceErrorCode::blueprint_resource_invalid:
+            return p_error.blueprint_error.has_value()
+                ? describe(p_error.blueprint_error.value())
+                : godot::String("the blueprint transport is invalid");
+        case LevelResourceErrorCode::blueprint_arrangement_invalid:
+            return p_error.arrangement_error.has_value()
+                ? describe(p_error.arrangement_error.value())
+                : godot::String("the blueprint is not one exact arrangement");
+        case LevelResourceErrorCode::arrangement_region_invalid:
+            return p_error.region_error.has_value()
+                ? describe(p_error.region_error.value())
+                : godot::String("the coverage is not one region");
+    }
+    return "unknown level failure";
+}
+
+godot::String describe(const LevelResourceEncodingError &p_error) {
+    switch (p_error.code) {
+        case LevelResourceEncodingErrorCode::unsupported_geometry_domain:
+            return "this geometry domain cannot be written";
+        case LevelResourceEncodingErrorCode::color_count_mismatch:
+            return "the authored colors do not match the palette";
+        case LevelResourceEncodingErrorCode::prototile_id_not_representable:
+            return "a palette entry's prototile id cannot be written";
+        case LevelResourceEncodingErrorCode::supply_not_representable:
+            return "a palette entry's supply cannot be written";
+        case LevelResourceEncodingErrorCode::too_many_placements:
+            return "this blueprint holds more than "
+                + number(p_error.expected_count.has_value()
+                        ? p_error.expected_count.value()
+                        : MAX_BLUEPRINT_PLACEMENTS)
+                + " placements";
+        case LevelResourceEncodingErrorCode::blueprint_prototile_id_not_representable:
+            return "a placement's prototile id cannot be written";
+    }
+    return "unknown encoding failure";
+}
+
+godot::String describe(const ExportLevelError &p_error) {
+    switch (p_error.code) {
+        case ExportLevelErrorCode::missing_resource:
+            return "there is nothing to write";
+        case ExportLevelErrorCode::path_required:
+            return "choose a destination file";
+        case ExportLevelErrorCode::unsupported_extension:
+            return "an exported level must be named .tres";
+        case ExportLevelErrorCode::compilation_failed:
+            return p_error.compilation_error.has_value()
+                ? describe(p_error.compilation_error.value())
+                : godot::String("the level did not compile");
+        case ExportLevelErrorCode::saver_failed:
+            return "the file could not be written (engine error "
+                + number(static_cast<std::int64_t>(p_error.godot_error)) + ")";
+    }
+    return "unknown export failure";
+}
+
 } // namespace
 
 // --- registration ---
@@ -502,6 +694,11 @@ void LevelEditor::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_clear_blueprint_pressed"),
         &LevelEditor::on_clear_blueprint_pressed);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("on_export_pressed"), &LevelEditor::on_export_pressed);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("on_export_file_selected", "path"),
+        &LevelEditor::on_export_file_selected);
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_help_pressed"), &LevelEditor::on_help_pressed);
 
@@ -565,7 +762,10 @@ bool LevelEditor::bind_scene() {
     hex12_button_ = require_action(HEX12_BUTTON);
     build_palette_button_ = require_action(BUILD_PALETTE_BUTTON);
     clear_blueprint_button_ = require_action(CLEAR_BLUEPRINT_BUTTON);
+    export_button_ = require_action(EXPORT_BUTTON);
     help_button_ = require_action(HELP_BUTTON);
+
+    export_dialog_ = godot::Object::cast_to<godot::FileDialog>(require(EXPORT_DIALOG_PATH));
 
     // Every required child is reported once, together, rather than as a cascade
     // of null dereferences.
@@ -589,9 +789,32 @@ bool LevelEditor::bind_scene() {
     clear_blueprint_button_->connect(
         godot::StringName("pressed"),
         godot::Callable(this, godot::StringName("on_clear_blueprint_pressed")));
+    export_button_->connect(
+        godot::StringName("pressed"),
+        godot::Callable(this, godot::StringName("on_export_pressed")));
     help_button_->connect(
         godot::StringName("pressed"),
         godot::Callable(this, godot::StringName("on_help_pressed")));
+
+    // Every load-bearing property of the export dialog is set here rather than
+    // in the scene, so there is exactly one authority for what an exported
+    // destination may be. The scene owns only its presentation.
+    //
+    // Filesystem access is the whole point: an exported level is a file a friend
+    // can be handed, so `res://` and `user://` do not satisfy it. Whether the
+    // platform actually provides a native dialog is the platform's business;
+    // asking for one is not.
+    export_dialog_->set_access(godot::FileDialog::ACCESS_FILESYSTEM);
+    export_dialog_->set_file_mode(godot::FileDialog::FILE_MODE_SAVE_FILE);
+    export_dialog_->clear_filters();
+    export_dialog_->add_filter(EXPORT_FILTER, EXPORT_FILTER_DESCRIPTION);
+    export_dialog_->set_customization_flag_enabled(
+        godot::FileDialog::CUSTOMIZATION_OVERWRITE_WARNING, true);
+    export_dialog_->set_use_native_dialog(true);
+    export_dialog_->set_current_file(DEFAULT_EXPORT_FILENAME);
+    export_dialog_->connect(
+        godot::StringName("file_selected"),
+        godot::Callable(this, godot::StringName("on_export_file_selected")));
 
     // The help dialog is owned by the editor rather than the scene, so the only
     // authored copy of the blurb is HELP_TEXT.
@@ -943,13 +1166,26 @@ bool LevelEditor::build_palette() {
 
     document_->palette = std::move(compiled).value();
     document_->colors = std::move(colors);
-    document_->records.clear();
-    document_->arrangement = Arrangement();
     document_->selection = Selection { 0, 0 };
+
+    // The empty blueprint goes through the same publication boundary as every
+    // later edit, so the new document begins with an empty arrangement and the
+    // exact empty-coverage proof rather than with a hand-installed pair.
+    //
+    // An empty record sequence compiles by construction, so the refusal below is
+    // unreachable. It exists so that "a locked palette always owns exactly one
+    // coverage proof" is true by construction rather than by argument: a palette
+    // which somehow could not publish one is not locked at all.
+    if (!publish(std::vector<engine::BlueprintPlacement>())) {
+        document_->palette.reset();
+        document_->colors.clear();
+        document_->selection.reset();
+        refresh_controls();
+        return false;
+    }
 
     build_entry_rows();
     sync_all_row_controls();
-    rebuild_proposals();
 
     set_status(
         "palette locked: " + number(document_->palette->order())
@@ -1294,8 +1530,40 @@ bool LevelEditor::publish(std::vector<engine::BlueprintPlacement> p_candidate) {
         return false;
     }
 
+    Arrangement candidate_arrangement = std::move(compiled).value();
+
+    // The derived region is proof about a blueprint which has already been
+    // accepted, so a coverage which is not one region does not reject the edit:
+    // an author must be able to place a tile which momentarily disconnects or
+    // pinches the coverage and then place the tile which repairs it.
+    std::optional<Region> candidate_region;
+    std::optional<ArrangementRegionError> candidate_error;
+    auto derived = region_from_arrangement(candidate_arrangement);
+    if (derived) {
+        candidate_region = std::move(derived).value();
+    } else {
+        candidate_error = derived.error();
+    }
+
+    // Empty, disconnected, and nonmanifold coverage are ordinary authoring
+    // states and say nothing to the engine log. An internal failure is a broken
+    // proof, and the developer gets the exact kind.
+    if (candidate_error.has_value()
+        && candidate_error->code == ArrangementRegionErrorCode::internal_invariant_failure) {
+        godot::UtilityFunctions::push_error(
+            "[tiles] level editor: deriving the coverage region failed an internal "
+            "check: ",
+            candidate_error->invariant_failure.has_value()
+                ? describe_invariant(candidate_error->invariant_failure.value())
+                : godot::String("no evidence was reported"));
+    }
+
+    // Records, arrangement, and exactly one region result become visible
+    // together: no observer ever sees new records beside an old proof.
     document_->records = std::move(p_candidate);
-    document_->arrangement = std::move(compiled).value();
+    document_->arrangement = std::move(candidate_arrangement);
+    document_->region = std::move(candidate_region);
+    document_->region_error = std::move(candidate_error);
 
     rebuild_proposals();
     sync_entry_rows();
@@ -1328,7 +1596,8 @@ bool LevelEditor::accept_active_proposal() {
     if (!publish(std::move(candidate))) {
         return false;
     }
-    set_status("placed: " + number(document_->records.size()) + " tiles");
+    set_status(
+        "placed: " + number(document_->records.size()) + " tiles | " + proof_summary());
     return true;
 }
 
@@ -1351,7 +1620,8 @@ bool LevelEditor::remove_record(std::size_t p_record) {
     if (!publish(std::move(candidate))) {
         return false;
     }
-    set_status("removed: " + number(document_->records.size()) + " tiles");
+    set_status(
+        "removed: " + number(document_->records.size()) + " tiles | " + proof_summary());
     return true;
 }
 
@@ -1362,7 +1632,67 @@ void LevelEditor::clear_blueprint() {
     if (!publish(std::vector<engine::BlueprintPlacement>())) {
         return;
     }
-    set_status("blueprint cleared");
+    set_status(godot::String("blueprint cleared | ") + proof_summary());
+}
+
+// --- export ---
+
+godot::String LevelEditor::proof_summary() const {
+    if (!document_.has_value() || !document_->palette.has_value()) {
+        return "no blueprint yet";
+    }
+    if (document_->region.has_value()) {
+        return "ready to export";
+    }
+    if (document_->region_error.has_value()) {
+        return describe(document_->region_error.value());
+    }
+    return "the coverage proof is unavailable";
+}
+
+bool LevelEditor::export_document(const godot::String &p_path) {
+    // Asked again here, not inherited from a button's enabled state: this is the
+    // one operation the toolbar callback and the headless runner both call.
+    if (!can_export()) {
+        set_status(godot::String("nothing to export: ") + proof_summary());
+        refresh_controls();
+        return false;
+    }
+
+    const std::optional<godot::String> destination = normalize_export_path(p_path);
+    if (!destination.has_value()) {
+        set_status(
+            p_path.is_empty() ? godot::String("choose a destination file")
+                              : godot::String("an exported level must be named .tres"));
+        return false;
+    }
+
+    // One fresh resource graph per attempt, held only for this call. The editor
+    // keeps no resource before it and none after it.
+    auto encoded = make_level_resource(
+        document_->domain,
+        document_->palette.value(),
+        document_->colors,
+        document_->records);
+    if (!encoded) {
+        set_status("the level could not be written: " + describe(encoded.error()));
+        return false;
+    }
+
+    // The exporter compiles the complete candidate itself before it reaches the
+    // saver. Holding an exact palette, arrangement, and region here does not
+    // entitle this document to skip that gate.
+    auto exported =
+        export_level_resource(std::move(encoded).value(), destination.value(), catalog_.value());
+    if (!exported) {
+        set_status("the level could not be written: " + describe(exported.error()));
+        return false;
+    }
+
+    // Nothing about the document changed, including its name: the next export
+    // asks for its own destination.
+    set_status("exported " + exported.value());
+    return true;
 }
 
 // --- pointer ---
@@ -1459,6 +1789,26 @@ const std::vector<engine::BlueprintPlacement> &LevelEditor::blueprint() const {
 
 const Arrangement *LevelEditor::arrangement() const {
     return document_.has_value() ? &document_->arrangement : nullptr;
+}
+
+const Region *LevelEditor::region() const {
+    if (!document_.has_value() || !document_->region.has_value()) {
+        return nullptr;
+    }
+    return &document_->region.value();
+}
+
+const ArrangementRegionError *LevelEditor::region_error() const {
+    if (!document_.has_value() || !document_->region_error.has_value()) {
+        return nullptr;
+    }
+    return &document_->region_error.value();
+}
+
+bool LevelEditor::can_export() const {
+    return phase() == EditorPhase::build_blueprint && catalog_.has_value()
+        && document_->palette.has_value() && !document_->records.empty()
+        && document_->region.has_value();
 }
 
 std::optional<LevelEditor::Selection> LevelEditor::selection() const {
@@ -1640,6 +1990,10 @@ void LevelEditor::refresh_controls() {
     }
     if (clear_blueprint_button_ != nullptr) {
         clear_blueprint_button_->set_disabled(current != EditorPhase::build_blueprint);
+    }
+    if (export_button_ != nullptr) {
+        // Presentation only. The operation behind it asks the same question.
+        export_button_->set_disabled(!can_export());
     }
 
     if (palette_title_ != nullptr) {
@@ -1872,6 +2226,29 @@ void LevelEditor::on_build_palette_pressed() {
 
 void LevelEditor::on_clear_blueprint_pressed() {
     clear_blueprint();
+    grab_focus();
+}
+
+void LevelEditor::on_export_pressed() {
+    // An ineligible document never opens the dialog, however the action was
+    // invoked: a disabled button is not the check, it only reflects it.
+    if (!can_export()) {
+        set_status(godot::String("nothing to export: ") + proof_summary());
+        refresh_controls();
+        grab_focus();
+        return;
+    }
+    if (export_dialog_ == nullptr) {
+        return;
+    }
+    // The presentation hint is the same every time. The editor remembers no
+    // previous destination and infers none from the document.
+    export_dialog_->set_current_file(DEFAULT_EXPORT_FILENAME);
+    export_dialog_->popup_centered_ratio(0.6);
+}
+
+void LevelEditor::on_export_file_selected(const godot::String &p_path) {
+    export_document(p_path);
     grab_focus();
 }
 
