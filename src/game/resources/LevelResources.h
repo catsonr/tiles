@@ -2,7 +2,6 @@
 
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/variant/color.hpp>
-#include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 
 #include <cstdint>
@@ -18,28 +17,23 @@ namespace tiles::game {
 // caches an exact core value. Everything exact is produced by the separate
 // resource compiler, in one direction only.
 //
-// Level resources serialize canonical prototile ids, never prototile geometry,
-// display names, or catalog references. Only per-level region vertices cross the
-// Godot numeric boundary.
+// One level artifact is exactly the authoring witness — a schema version, a
+// geometry domain, a palette, and the blueprint records which tile it. It
+// stores no independently authored region: the only region a level has is the
+// one derived by compiling its blueprint into an arrangement. Only canonical
+// prototile ids, supplies, presentation colors, rational orientations, and raw
+// q16.48 translations cross the Godot numeric boundary.
 
-// One authored polygon boundary. The closing vertex is implicit: the first
-// vertex is never repeated at the end. An invalid ring is diagnosed by the
-// compiler, not by this setter.
-//
-// Used only for region boundaries. No catalog prototile refers to one.
-class PolygonResource : public godot::Resource {
-    GDCLASS(PolygonResource, godot::Resource)
+// The schema version this build writes and the only one it reads. A future
+// incompatible schema increments it; there is deliberately no migration,
+// accepted range, or best-effort interpretation of any other value.
+constexpr std::int64_t LEVEL_RESOURCE_FORMAT_VERSION = 1;
 
-protected:
-    static void _bind_methods();
-
-public:
-    void set_vertices(const godot::PackedVector2Array &p_vertices);
-    godot::PackedVector2Array get_vertices() const;
-
-private:
-    godot::PackedVector2Array vertices_;
-};
+// The stable serialized encoding of the two geometry domains. It is a transport
+// spelling, not a domain value: the enumeration itself is still Godot-free and
+// no resource holds one.
+constexpr std::int64_t ENCODED_GEOMETRY_DOMAIN_LATTICE = 0;
+constexpr std::int64_t ENCODED_GEOMETRY_DOMAIN_HEX12 = 1;
 
 // One authored palette slot: which canonical prototile, how many, and the
 // color this level presents it in.
@@ -92,31 +86,54 @@ private:
     godot::TypedArray<PaletteEntryResource> entries_;
 };
 
-// One authored region: an outer boundary and zero or more holes in authored
-// order. A null outer boundary or a null hole is a representable transport
-// value; the compiler reports it with its exact index.
-class RegionResource : public godot::Resource {
-    GDCLASS(RegionResource, godot::Resource)
+// One authored blueprint record: which canonical prototile, which of its
+// distinct compiled orientations, and where.
+//
+// The orientation is a rational fraction of a turn written as a step/order
+// pair, so a record keeps its meaning across recompilation and across any
+// reordering of the values it names. The translation is authoritative signed
+// q16.48 raw storage, transported as the two integers it already is: nothing
+// here passes a coordinate through Vector2, decimal text, multiplication by
+// Coordinate::SCALE, quantization, or rendered geometry.
+//
+// Every property is a plain signed integer because Godot's serialized integer
+// is signed. Out-of-range and inconsistent encodings are representable on
+// purpose; the compiler reports them with their exact record index.
+class BlueprintPlacementResource : public godot::Resource {
+    GDCLASS(BlueprintPlacementResource, godot::Resource)
 
 protected:
     static void _bind_methods();
 
 public:
-    void set_outer_boundary(const godot::Ref<PolygonResource> &p_boundary);
-    godot::Ref<PolygonResource> get_outer_boundary() const;
+    void set_prototile_id(std::int64_t p_id);
+    std::int64_t get_prototile_id() const;
 
-    void set_inner_boundaries(const godot::TypedArray<PolygonResource> &p_boundaries);
-    godot::TypedArray<PolygonResource> get_inner_boundaries() const;
+    void set_orientation_step(std::int64_t p_step);
+    std::int64_t get_orientation_step() const;
+
+    void set_orientation_order(std::int64_t p_order);
+    std::int64_t get_orientation_order() const;
+
+    void set_translation_x_raw(std::int64_t p_raw);
+    std::int64_t get_translation_x_raw() const;
+
+    void set_translation_y_raw(std::int64_t p_raw);
+    std::int64_t get_translation_y_raw() const;
 
 private:
-    godot::Ref<PolygonResource> outer_boundary_;
-    godot::TypedArray<PolygonResource> inner_boundaries_;
+    std::int64_t prototile_id_ = 0;
+    std::int64_t orientation_step_ = 0;
+    std::int64_t orientation_order_ = 1;
+    std::int64_t translation_x_raw_ = 0;
+    std::int64_t translation_y_raw_ = 0;
 };
 
-// One authored level: a palette and a region, and nothing else. It holds no
-// arrangement, history, completion flag, known solution, catalog reference,
-// rotation rule, display metadata, or save path. Godot's inherited resource
-// path is its persistence identity.
+// One authored level: a schema version, a geometry domain, a palette, and a
+// blueprint, and nothing else. It holds no region, arrangement, history,
+// completion flag, player progress, export result, dirty flag, editor state,
+// catalog reference, or display metadata. Godot's inherited resource path is
+// its only file identity.
 class LevelResource : public godot::Resource {
     GDCLASS(LevelResource, godot::Resource)
 
@@ -124,15 +141,23 @@ protected:
     static void _bind_methods();
 
 public:
+    void set_format_version(std::int64_t p_version);
+    std::int64_t get_format_version() const;
+
+    void set_geometry_domain(std::int64_t p_domain);
+    std::int64_t get_geometry_domain() const;
+
     void set_palette(const godot::Ref<PaletteResource> &p_palette);
     godot::Ref<PaletteResource> get_palette() const;
 
-    void set_region(const godot::Ref<RegionResource> &p_region);
-    godot::Ref<RegionResource> get_region() const;
+    void set_blueprint(const godot::TypedArray<BlueprintPlacementResource> &p_blueprint);
+    godot::TypedArray<BlueprintPlacementResource> get_blueprint() const;
 
 private:
+    std::int64_t format_version_ = LEVEL_RESOURCE_FORMAT_VERSION;
+    std::int64_t geometry_domain_ = ENCODED_GEOMETRY_DOMAIN_LATTICE;
     godot::Ref<PaletteResource> palette_;
-    godot::Ref<RegionResource> region_;
+    godot::TypedArray<BlueprintPlacementResource> blueprint_;
 };
 
 } // namespace tiles::game

@@ -11,15 +11,15 @@ namespace tiles::game {
 
 namespace {
 
-// The only persistence formats this project uses: Godot's text and binary
-// resource containers. Nothing here serializes json or a bespoke text format.
+// The one persistence format this project writes and reads: Godot's text
+// resource container. Nothing here serializes binary `.res`, json, or a bespoke
+// text format.
 bool is_supported_extension(const godot::String &p_path) {
-    const godot::String extension = p_path.get_extension().to_lower();
-    return extension == godot::String("tres") || extension == godot::String("res");
+    return p_path.get_extension().to_lower() == godot::String("tres");
 }
 
-SaveLevelError save_failure(SaveLevelErrorCode p_code, godot::Error p_error) {
-    SaveLevelError error {};
+ExportLevelError export_failure(ExportLevelErrorCode p_code, godot::Error p_error) {
+    ExportLevelError error {};
     error.code = p_code;
     error.godot_error = p_error;
     return error;
@@ -33,58 +33,57 @@ LoadLevelError load_failure(LoadLevelErrorCode p_code) {
 
 } // namespace
 
-Result<godot::String, SaveLevelError> save_level_resource(
-    const godot::Ref<LevelResource> &p_resource, const godot::String &p_explicit_path) {
-    using Saved = Result<godot::String, SaveLevelError>;
+Result<godot::String, ExportLevelError> export_level_resource(
+    const godot::Ref<LevelResource> &p_resource,
+    const godot::String &p_explicit_path,
+    const content::PrototileCatalog &p_catalog) {
+    using Exported = Result<godot::String, ExportLevelError>;
 
     if (p_resource.is_null()) {
-        return Saved::failure(
-            save_failure(SaveLevelErrorCode::missing_resource, godot::OK));
+        return Exported::failure(
+            export_failure(ExportLevelErrorCode::missing_resource, godot::OK));
     }
 
-    const bool explicit_path = !p_explicit_path.is_empty();
-    const godot::String path =
-        explicit_path ? p_explicit_path : p_resource->get_path();
-
-    if (path.is_empty()) {
-        return Saved::failure(save_failure(SaveLevelErrorCode::path_required, godot::OK));
+    if (p_explicit_path.is_empty()) {
+        return Exported::failure(
+            export_failure(ExportLevelErrorCode::path_required, godot::OK));
     }
 
-    if (!is_supported_extension(path)) {
-        return Saved::failure(
-            save_failure(SaveLevelErrorCode::unsupported_extension, godot::OK));
+    if (!is_supported_extension(p_explicit_path)) {
+        return Exported::failure(
+            export_failure(ExportLevelErrorCode::unsupported_extension, godot::OK));
     }
 
-    // An explicit path takes ownership: this is both first save and save-as. A
-    // pathless save writes to the already owned path and leaves identity alone.
-    const godot::BitField<godot::ResourceSaver::SaverFlags> flags =
-        explicit_path
-        ? godot::BitField<godot::ResourceSaver::SaverFlags>(
-              godot::ResourceSaver::FLAG_CHANGE_PATH)
-        : godot::BitField<godot::ResourceSaver::SaverFlags>(
-              godot::ResourceSaver::FLAG_NONE);
+    // The complete compilation gate. It is the whole reason export exists as an
+    // operation rather than as a bare saver call: an artifact which cannot
+    // become an exact level never reaches the filesystem.
+    auto compiled = compile_level_resource(p_resource, p_catalog);
+    if (!compiled) {
+        ExportLevelError error =
+            export_failure(ExportLevelErrorCode::compilation_failed, godot::OK);
+        error.compilation_error = compiled.error();
+        return Exported::failure(error);
+    }
 
-    const godot::Error result =
-        godot::ResourceSaver::get_singleton()->save(p_resource, path, flags);
+    // Bundled subresources, and deliberately no FLAG_CHANGE_PATH: the written
+    // file is self-contained and the exported resource keeps whatever inherited
+    // path it already had. Export claims no file identity.
+    const godot::Error result = godot::ResourceSaver::get_singleton()->save(
+        p_resource,
+        p_explicit_path,
+        godot::BitField<godot::ResourceSaver::SaverFlags>(
+            godot::ResourceSaver::FLAG_BUNDLE_RESOURCES));
     if (result != godot::OK) {
-        return Saved::failure(save_failure(SaveLevelErrorCode::saver_failed, result));
+        return Exported::failure(
+            export_failure(ExportLevelErrorCode::saver_failed, result));
     }
 
-    if (explicit_path) {
-        // The saver flag governs path resolution only for the duration of the
-        // write: the pinned engine restores the resource's previous path
-        // afterwards. Ownership is therefore claimed explicitly here, which is
-        // what makes an explicit save both first save and save-as, and what
-        // lets a later pathless save overwrite the same file.
-        p_resource->take_over_path(path);
-    }
-
-    return Saved::success(path);
+    return Exported::success(p_explicit_path);
 }
 
-Result<LoadedLevel, LoadLevelError> load_level_resource(
+Result<LoadedLevelResource, LoadLevelError> load_level_resource(
     const godot::String &p_path, const content::PrototileCatalog &p_catalog) {
-    using Loaded = Result<LoadedLevel, LoadLevelError>;
+    using Loaded = Result<LoadedLevelResource, LoadLevelError>;
 
     if (p_path.is_empty()) {
         return Loaded::failure(load_failure(LoadLevelErrorCode::path_required));
@@ -95,7 +94,7 @@ Result<LoadedLevel, LoadLevelError> load_level_resource(
     }
 
     // Deep cache bypass: loading a path observes its persisted contents, not an
-    // older cached object or the in-memory resource just saved there.
+    // older cached object or the in-memory resource just written there.
     const godot::Ref<godot::Resource> loaded =
         godot::ResourceLoader::get_singleton()->load(
             p_path,
@@ -118,7 +117,8 @@ Result<LoadedLevel, LoadLevelError> load_level_resource(
         return Loaded::failure(error);
     }
 
-    return Loaded::success(LoadedLevel { level_resource, std::move(compiled).value() });
+    return Loaded::success(
+        LoadedLevelResource { level_resource, std::move(compiled).value() });
 }
 
 } // namespace tiles::game

@@ -21,31 +21,6 @@ godot::String resource_array_hint(const char *p_class_name) {
 
 } // namespace
 
-// --- polygon ---
-
-void PolygonResource::_bind_methods() {
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("set_vertices", "vertices"), &PolygonResource::set_vertices);
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("get_vertices"), &PolygonResource::get_vertices);
-    ADD_PROPERTY(
-        godot::PropertyInfo(godot::Variant::PACKED_VECTOR2_ARRAY, "vertices"),
-        "set_vertices",
-        "get_vertices");
-}
-
-void PolygonResource::set_vertices(const godot::PackedVector2Array &p_vertices) {
-    if (vertices_ == p_vertices) {
-        return;
-    }
-    vertices_ = p_vertices;
-    emit_changed();
-}
-
-godot::PackedVector2Array PolygonResource::get_vertices() const {
-    return vertices_;
-}
-
 // --- palette entry ---
 
 void PaletteEntryResource::_bind_methods() {
@@ -144,75 +119,152 @@ godot::TypedArray<PaletteEntryResource> PaletteResource::get_entries() const {
     return entries_;
 }
 
-// --- region ---
+// --- blueprint placement ---
 
-void RegionResource::_bind_methods() {
+void BlueprintPlacementResource::_bind_methods() {
     godot::ClassDB::bind_method(
-        godot::D_METHOD("set_outer_boundary", "outer_boundary"),
-        &RegionResource::set_outer_boundary);
+        godot::D_METHOD("set_prototile_id", "prototile_id"),
+        &BlueprintPlacementResource::set_prototile_id);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("get_outer_boundary"), &RegionResource::get_outer_boundary);
+        godot::D_METHOD("get_prototile_id"),
+        &BlueprintPlacementResource::get_prototile_id);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("set_inner_boundaries", "inner_boundaries"),
-        &RegionResource::set_inner_boundaries);
+        godot::D_METHOD("set_orientation_step", "orientation_step"),
+        &BlueprintPlacementResource::set_orientation_step);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("get_inner_boundaries"), &RegionResource::get_inner_boundaries);
+        godot::D_METHOD("get_orientation_step"),
+        &BlueprintPlacementResource::get_orientation_step);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_orientation_order", "orientation_order"),
+        &BlueprintPlacementResource::set_orientation_order);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_orientation_order"),
+        &BlueprintPlacementResource::get_orientation_order);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_translation_x_raw", "translation_x_raw"),
+        &BlueprintPlacementResource::set_translation_x_raw);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_translation_x_raw"),
+        &BlueprintPlacementResource::get_translation_x_raw);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_translation_y_raw", "translation_y_raw"),
+        &BlueprintPlacementResource::set_translation_y_raw);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_translation_y_raw"),
+        &BlueprintPlacementResource::get_translation_y_raw);
 
     ADD_PROPERTY(
-        godot::PropertyInfo(
-            godot::Variant::OBJECT,
-            "outer_boundary",
-            godot::PROPERTY_HINT_RESOURCE_TYPE,
-            "PolygonResource"),
-        "set_outer_boundary",
-        "get_outer_boundary");
+        godot::PropertyInfo(godot::Variant::INT, "prototile_id"),
+        "set_prototile_id",
+        "get_prototile_id");
     ADD_PROPERTY(
-        godot::PropertyInfo(
-            godot::Variant::ARRAY,
-            "inner_boundaries",
-            godot::PROPERTY_HINT_ARRAY_TYPE,
-            resource_array_hint("PolygonResource")),
-        "set_inner_boundaries",
-        "get_inner_boundaries");
+        godot::PropertyInfo(godot::Variant::INT, "orientation_step"),
+        "set_orientation_step",
+        "get_orientation_step");
+    ADD_PROPERTY(
+        godot::PropertyInfo(godot::Variant::INT, "orientation_order"),
+        "set_orientation_order",
+        "get_orientation_order");
+    ADD_PROPERTY(
+        godot::PropertyInfo(godot::Variant::INT, "translation_x_raw"),
+        "set_translation_x_raw",
+        "get_translation_x_raw");
+    ADD_PROPERTY(
+        godot::PropertyInfo(godot::Variant::INT, "translation_y_raw"),
+        "set_translation_y_raw",
+        "get_translation_y_raw");
 }
 
-void RegionResource::set_outer_boundary(const godot::Ref<PolygonResource> &p_boundary) {
-    if (outer_boundary_ == p_boundary) {
+void BlueprintPlacementResource::set_prototile_id(std::int64_t p_id) {
+    if (prototile_id_ == p_id) {
         return;
     }
-    outer_boundary_ = p_boundary;
+    prototile_id_ = p_id;
     emit_changed();
 }
 
-godot::Ref<PolygonResource> RegionResource::get_outer_boundary() const {
-    return outer_boundary_;
+std::int64_t BlueprintPlacementResource::get_prototile_id() const {
+    return prototile_id_;
 }
 
-void RegionResource::set_inner_boundaries(
-    const godot::TypedArray<PolygonResource> &p_boundaries) {
-    if (inner_boundaries_ == p_boundaries) {
+void BlueprintPlacementResource::set_orientation_step(std::int64_t p_step) {
+    if (orientation_step_ == p_step) {
         return;
     }
-    inner_boundaries_ = p_boundaries;
+    orientation_step_ = p_step;
     emit_changed();
 }
 
-godot::TypedArray<PolygonResource> RegionResource::get_inner_boundaries() const {
-    return inner_boundaries_;
+std::int64_t BlueprintPlacementResource::get_orientation_step() const {
+    return orientation_step_;
+}
+
+void BlueprintPlacementResource::set_orientation_order(std::int64_t p_order) {
+    if (orientation_order_ == p_order) {
+        return;
+    }
+    orientation_order_ = p_order;
+    emit_changed();
+}
+
+std::int64_t BlueprintPlacementResource::get_orientation_order() const {
+    return orientation_order_;
+}
+
+void BlueprintPlacementResource::set_translation_x_raw(std::int64_t p_raw) {
+    if (translation_x_raw_ == p_raw) {
+        return;
+    }
+    translation_x_raw_ = p_raw;
+    emit_changed();
+}
+
+std::int64_t BlueprintPlacementResource::get_translation_x_raw() const {
+    return translation_x_raw_;
+}
+
+void BlueprintPlacementResource::set_translation_y_raw(std::int64_t p_raw) {
+    if (translation_y_raw_ == p_raw) {
+        return;
+    }
+    translation_y_raw_ = p_raw;
+    emit_changed();
+}
+
+std::int64_t BlueprintPlacementResource::get_translation_y_raw() const {
+    return translation_y_raw_;
 }
 
 // --- level ---
 
 void LevelResource::_bind_methods() {
     godot::ClassDB::bind_method(
+        godot::D_METHOD("set_format_version", "format_version"),
+        &LevelResource::set_format_version);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_format_version"), &LevelResource::get_format_version);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_geometry_domain", "geometry_domain"),
+        &LevelResource::set_geometry_domain);
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_geometry_domain"), &LevelResource::get_geometry_domain);
+    godot::ClassDB::bind_method(
         godot::D_METHOD("set_palette", "palette"), &LevelResource::set_palette);
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_palette"), &LevelResource::get_palette);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("set_region", "region"), &LevelResource::set_region);
+        godot::D_METHOD("set_blueprint", "blueprint"), &LevelResource::set_blueprint);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("get_region"), &LevelResource::get_region);
+        godot::D_METHOD("get_blueprint"), &LevelResource::get_blueprint);
 
+    ADD_PROPERTY(
+        godot::PropertyInfo(godot::Variant::INT, "format_version"),
+        "set_format_version",
+        "get_format_version");
+    ADD_PROPERTY(
+        godot::PropertyInfo(godot::Variant::INT, "geometry_domain"),
+        "set_geometry_domain",
+        "get_geometry_domain");
     ADD_PROPERTY(
         godot::PropertyInfo(
             godot::Variant::OBJECT,
@@ -223,12 +275,36 @@ void LevelResource::_bind_methods() {
         "get_palette");
     ADD_PROPERTY(
         godot::PropertyInfo(
-            godot::Variant::OBJECT,
-            "region",
-            godot::PROPERTY_HINT_RESOURCE_TYPE,
-            "RegionResource"),
-        "set_region",
-        "get_region");
+            godot::Variant::ARRAY,
+            "blueprint",
+            godot::PROPERTY_HINT_ARRAY_TYPE,
+            resource_array_hint("BlueprintPlacementResource")),
+        "set_blueprint",
+        "get_blueprint");
+}
+
+void LevelResource::set_format_version(std::int64_t p_version) {
+    if (format_version_ == p_version) {
+        return;
+    }
+    format_version_ = p_version;
+    emit_changed();
+}
+
+std::int64_t LevelResource::get_format_version() const {
+    return format_version_;
+}
+
+void LevelResource::set_geometry_domain(std::int64_t p_domain) {
+    if (geometry_domain_ == p_domain) {
+        return;
+    }
+    geometry_domain_ = p_domain;
+    emit_changed();
+}
+
+std::int64_t LevelResource::get_geometry_domain() const {
+    return geometry_domain_;
 }
 
 void LevelResource::set_palette(const godot::Ref<PaletteResource> &p_palette) {
@@ -243,16 +319,17 @@ godot::Ref<PaletteResource> LevelResource::get_palette() const {
     return palette_;
 }
 
-void LevelResource::set_region(const godot::Ref<RegionResource> &p_region) {
-    if (region_ == p_region) {
+void LevelResource::set_blueprint(
+    const godot::TypedArray<BlueprintPlacementResource> &p_blueprint) {
+    if (blueprint_ == p_blueprint) {
         return;
     }
-    region_ = p_region;
+    blueprint_ = p_blueprint;
     emit_changed();
 }
 
-godot::Ref<RegionResource> LevelResource::get_region() const {
-    return region_;
+godot::TypedArray<BlueprintPlacementResource> LevelResource::get_blueprint() const {
+    return blueprint_;
 }
 
 } // namespace tiles::game
