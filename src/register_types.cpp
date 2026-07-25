@@ -1,7 +1,10 @@
 #include "register_types.h"
 
 #include "game/Editor.h"
+#include "game/LevelEditor.h"
+#include "game/PrototilePreview.h"
 #include "game/resources/LevelResources.h"
+#include "game/testing/LevelEditorIntegrationRunner.h"
 #include "game/testing/ResourceIntegrationRunner.h"
 
 #include <gdextension_interface.h>
@@ -22,10 +25,18 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     GDREGISTER_CLASS(tiles::game::RegionResource);
     GDREGISTER_CLASS(tiles::game::LevelResource);
 
-    // Registered only because its own dedicated test scene instantiates it.
-    // Registration does not place it in the main application scene.
+    // Registered only because their own dedicated test scenes instantiate them.
+    // Registration does not place them in the main application scene.
     GDREGISTER_CLASS(tiles::game::ResourceIntegrationRunner);
+    GDREGISTER_CLASS(tiles::game::LevelEditorIntegrationRunner);
 
+    // The row preview is constructed by LevelEditor, so it must exist in ClassDB
+    // before the main scene is instantiated.
+    GDREGISTER_CLASS(tiles::game::PrototilePreview);
+    GDREGISTER_CLASS(tiles::game::LevelEditor);
+
+    // The construction fixture. It is no longer in the main scene; act 2 consumes
+    // its useful player behaviour.
     GDREGISTER_CLASS(tiles::game::Editor);
 }
 

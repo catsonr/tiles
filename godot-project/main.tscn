@@ -1,8 +1,188 @@
 [gd_scene format=3]
 
-[node name="Editor" type="Editor"]
+[node name="LevelEditor" type="LevelEditor"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="Toolbar" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 52.0
+grow_horizontal = 2
+mouse_filter = 0
+color = Color(0.14, 0.15, 0.18, 1)
+
+[node name="Margin" type="MarginContainer" parent="Toolbar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="Actions" type="HBoxContainer" parent="Toolbar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="NewLevelButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "new level"
+
+[node name="OpenDraftButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "open draft…"
+
+[node name="RestartRegionButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "restart region"
+
+[node name="AddHoleButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "add hole"
+
+[node name="SaveButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "save"
+
+[node name="SaveAsButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "save as…"
+
+[node name="PlayButton" type="Button" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+text = "play"
+
+[node name="Spacer" type="Control" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="PathLabel" type="Label" parent="Toolbar/Margin/Actions"]
+layout_mode = 2
+vertical_alignment = 1
+text = "unsaved level"
+
+[node name="PalettePanel" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_top = 52.0
+offset_right = 360.0
+offset_bottom = -96.0
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.12, 0.13, 0.16, 1)
+
+[node name="Margin" type="MarginContainer" parent="PalettePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="Body" type="VBoxContainer" parent="PalettePanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="PaletteTitle" type="Label" parent="PalettePanel/Margin/Body"]
+layout_mode = 2
+text = "palette — include a tile, then choose its supply and color"
+autowrap_mode = 3
+
+[node name="PaletteScroll" type="ScrollContainer" parent="PalettePanel/Margin/Body"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="PaletteRows" type="VBoxContainer" parent="PalettePanel/Margin/Body/PaletteScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="StatusBar" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -96.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 0
+color = Color(0.14, 0.15, 0.18, 1)
+
+[node name="Margin" type="MarginContainer" parent="StatusBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 4
+
+[node name="Body" type="VBoxContainer" parent="StatusBar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="InstructionLabel" type="Label" parent="StatusBar/Margin/Body"]
+layout_mode = 2
+text = "choose at least one tile, then draw the outer boundary."
+autowrap_mode = 3
+
+[node name="Line" type="HBoxContainer" parent="StatusBar/Margin/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatusLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
+layout_mode = 2
+text = "new unsaved level"
+
+[node name="Spacer" type="Control" parent="StatusBar/Margin/Body/Line"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="CoordinateLabel" type="Label" parent="StatusBar/Margin/Body/Line"]
+layout_mode = 2
+text = "(—, —)"
+
+[node name="OpenDialog" type="FileDialog" parent="."]
+title = "open level draft"
+initial_position = 2
+size = Vector2i(760, 520)
+visible = false
+access = 0
+file_mode = 0
+filters = PackedStringArray("*.tres;godot resource", "*.res;godot binary resource")
+
+[node name="SaveDialog" type="FileDialog" parent="."]
+title = "save level"
+initial_position = 2
+size = Vector2i(760, 520)
+visible = false
+access = 0
+file_mode = 4
+filters = PackedStringArray("*.tres;godot resource", "*.res;godot binary resource")
+
+[node name="DiscardDialog" type="ConfirmationDialog" parent="."]
+title = "discard draft"
+initial_position = 2
+size = Vector2i(420, 120)
+visible = false
+dialog_text = "discard the current unsaved draft?"
