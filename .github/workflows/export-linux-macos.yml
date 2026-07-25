@@ -50,6 +50,10 @@ jobs:
         name: install scons
         run: brew install scons
 
+      - if: matrix.platform == 'macos'
+        name: build the debug gdextension for export validation
+        run: scons platform=macos target=template_debug arch=universal
+
       - name: build the release gdextension
         run: scons platform=${{ matrix.platform }} target=template_release arch=${{ matrix.arch }}
 
