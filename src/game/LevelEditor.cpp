@@ -139,10 +139,6 @@ godot::String number(std::int64_t p_value) {
     return godot::String::num_int64(p_value);
 }
 
-godot::String number(std::size_t p_value) {
-    return godot::String::num_int64(static_cast<std::int64_t>(p_value));
-}
-
 godot::String number(std::uint64_t p_value) {
     return godot::String::num_uint64(p_value);
 }
