@@ -133,6 +133,89 @@ TEST_CASE("a rejected insertion preserves entries, ordering, and the id allocato
     CHECK(ids_unchanged);
 }
 
+TEST_CASE("direct insertion preview returns the exact placement and mutates nothing") {
+    Arrangement arrangement;
+    CHECK(arrangement.try_insert(square_at(0, 0)).has_value());
+
+    const Arrangement &observed = arrangement;
+    auto previewed = observed.preview_insert(square_at(10, 0));
+    CHECK(previewed.has_value());
+    if (previewed.has_value()) {
+        // The supplied placement, unchanged: same translation, same footprint.
+        CHECK(previewed.value().translation() == raw(10, 0));
+        CHECK(previewed.value().footprint().vertices()
+            == square_at(10, 0).footprint().vertices());
+    }
+
+    // Nothing was appended and no identity was reserved or predicted.
+    CHECK(arrangement.entries().size() == 1);
+    CHECK(arrangement.next_id().value() == PlacementId(1));
+
+    // Repeating it against the unmodified arrangement is identical.
+    auto again = observed.preview_insert(square_at(10, 0));
+    CHECK(again.has_value());
+    if (previewed.has_value() && again.has_value()) {
+        CHECK(previewed.value().footprint().vertices()
+            == again.value().footprint().vertices());
+    }
+    CHECK(arrangement.entries().size() == 1);
+}
+
+TEST_CASE("insertion preview applies the same rejection precedence as insertion") {
+    Arrangement arrangement;
+    const auto id0 = arrangement.try_insert(square_at(0, 0)).value();
+    const auto id1 = arrangement.try_insert(square_at(20, 0)).value();
+
+    // The first conflicting placement in storage order names the conflict, in
+    // both directions.
+    auto first = arrangement.preview_insert(square_at(1, 1));
+    CHECK(first.has_value() == false);
+    if (!first.has_value()) {
+        CHECK(first.error().code == ArrangementErrorCode::interior_overlap);
+        CHECK(first.error().conflicting_placement.value() == id0);
+    }
+    auto second = arrangement.preview_insert(square_at(21, 1));
+    CHECK(second.has_value() == false);
+    if (!second.has_value()) {
+        CHECK(second.error().conflicting_placement.value() == id1);
+    }
+
+    // A rejected preview leaves the arrangement exactly as it was.
+    CHECK(arrangement.entries().size() == 2);
+    CHECK(arrangement.next_id().value() == PlacementId(2));
+
+    // Identifier exhaustion is reported by preview too, with no conflict id.
+    Arrangement exhausted = Arrangement::testing_with_next_id(UINT64_MAX);
+    CHECK(exhausted.try_insert(square_at(0, 0)).has_value());
+    auto overflow = exhausted.preview_insert(square_at(100, 100));
+    CHECK(overflow.has_value() == false);
+    if (!overflow.has_value()) {
+        CHECK(overflow.error().code == ArrangementErrorCode::identifier_exhausted);
+        CHECK(overflow.error().conflicting_placement.has_value() == false);
+    }
+}
+
+TEST_CASE("a successful insertion preview and an immediate insertion agree") {
+    Arrangement arrangement;
+    CHECK(arrangement.try_insert(square_at(0, 0)).has_value());
+
+    auto previewed = arrangement.preview_insert(square_at(4, 0));
+    CHECK(previewed.has_value());
+    if (!previewed.has_value()) {
+        return;
+    }
+    const Polygon::Vertices expected = previewed.value().footprint().vertices();
+
+    auto inserted = arrangement.try_insert(square_at(4, 0));
+    CHECK(inserted.has_value());
+    if (!inserted.has_value()) {
+        return;
+    }
+    CHECK(inserted.value() == PlacementId(1));
+    CHECK(arrangement.entries().back().id == inserted.value());
+    CHECK(arrangement.entries().back().placement.footprint().vertices() == expected);
+}
+
 TEST_CASE("identifier exhaustion fails without corrupting the arrangement") {
     // The construction seam only presets the id allocator of an otherwise empty,
     // valid arrangement, so it cannot fabricate an invalid public value.

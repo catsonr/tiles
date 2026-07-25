@@ -9,7 +9,9 @@
 #include "core/geometry/Coordinate.h"
 #include "core/geometry/Point.h"
 #include "core/geometry/Polygon.h"
+#include "core/Region.h"
 #include "engine/Commands.h"
+#include "engine/Level.h"
 #include "engine/Palette.h"
 #include "engine/State.h"
 #include "engine/Supply.h"
@@ -23,6 +25,7 @@
 
 using namespace tiles;
 using tiles::engine::CandidateError;
+using tiles::engine::Level;
 using tiles::engine::MateCommandError;
 using tiles::engine::MateFullEdgesCommand;
 using tiles::engine::MateVerticesCommand;
@@ -72,6 +75,19 @@ Palette palette_of(std::vector<PaletteEntry> p_entries) {
     return std::move(Palette::make(std::move(p_entries)).value());
 }
 
+// One region large enough that no fixture below is ever rejected for leaving
+// it. Region legality has its own dedicated coverage; these command tests are
+// about candidate resolution, supply, exact geometry, and mating.
+Region big_region() {
+    auto outer = Polygon::make({ unit(-32, -32), unit(32, -32), unit(32, 32), unit(-32, 32) });
+    auto region = Region::make(std::move(outer).value(), {});
+    return std::move(region).value();
+}
+
+Level level_of(Palette p_palette) {
+    return Level(std::move(p_palette), big_region());
+}
+
 Palette square_palette(Supply p_supply) {
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(square(1), p_supply, { R }));
@@ -81,7 +97,7 @@ Palette square_palette(Supply p_supply) {
 // One 2x2 square entry with the reference orientation only, over an empty
 // arrangement: orientation index 1 is therefore always out of range.
 State square_state(Supply p_supply) {
-    return State(square_palette(p_supply), Arrangement());
+    return State(level_of(square_palette(p_supply)));
 }
 
 PlaceCommand place_at(
@@ -208,7 +224,7 @@ TEST_CASE("an out-of-range orientation of a valid entry is rejected and changes 
     // labels recorded inside one of them.
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(square(1), Supply::unlimited(), { R, Q, H, T }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
     CHECK(state.palette().entries()[0].orientations().size() == 1);
     CHECK(state.palette().entries()[0].orientations()[0].equivalent_orientations().size() == 4);
 
@@ -278,7 +294,7 @@ TEST_CASE("a fractional translation is accepted unchanged, proving no integer gr
 TEST_CASE("the stored placement carries the selected prototile id and orientation") {
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(bar(9), Supply::unlimited(), { R, Q, H, T }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
     CHECK(state.palette().entries()[0].orientations().size() == 2);
 
     auto applied = state.apply(place_at(0, 1, unit(0, 0)));
@@ -333,8 +349,9 @@ TEST_CASE("interior overlap preserves the complete core ArrangementError") {
 }
 
 TEST_CASE("identifier exhaustion preserves the core identifier_exhausted code") {
-    State state(
-        square_palette(Supply::unlimited()), Arrangement::testing_with_next_id(UINT64_MAX));
+    State state = State::testing_with_empty_arrangement(
+        level_of(square_palette(Supply::unlimited())),
+        Arrangement::testing_with_next_id(UINT64_MAX));
 
     auto last = state.apply(place_at(0, 0, unit(0, 0)));
     CHECK(bool(last));
@@ -440,7 +457,7 @@ TEST_CASE("finite supply one permits one placement and then reports supply_exhau
 TEST_CASE("different orientations of one entry draw on the same supply") {
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(bar(3), Supply::finite(1).value(), { R, Q, H, T }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
     CHECK(state.palette().entries()[0].orientations().size() == 2);
 
     CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
@@ -479,7 +496,7 @@ TEST_CASE("placements of a different prototile id do not consume an entry's supp
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(square(1), Supply::finite(1).value(), { R }));
     entries.push_back(make_entry(bar(2), Supply::unlimited(), { R }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
 
     // Two bars first; neither draws on the square's single configured piece.
     CHECK(bool(state.apply(place_at(1, 0, unit(0, 10)))));
@@ -495,47 +512,67 @@ TEST_CASE("placements of a different prototile id do not consume an entry's supp
     CHECK(bool(state.apply(place_at(1, 0, unit(0, 14)))));
 }
 
-TEST_CASE("a matching placement preloaded through the constructor consumes supply") {
-    Arrangement preloaded;
-    auto placement = Placement::make(reference_orientation(square(1)), unit(0, 0));
-    CHECK(bool(placement));
-    if (!placement) {
+TEST_CASE("supply counts placements whichever command added them") {
+    // Supply identity is the exact PrototileId, and usage is derived from the
+    // arrangement rather than stored, so a mated placement draws on the same
+    // capacity a directly placed one does. There is no longer any way to
+    // preload a placement: a state begins empty and every entry in it was
+    // proven against this palette, its supply, and the region.
+    State state = square_state(Supply::finite(2).value());
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(anchor));
+    if (!anchor) {
         return;
     }
-    CHECK(bool(preloaded.try_insert(std::move(placement).value())));
 
-    // Supply identity is the exact PrototileId, so it makes no difference that
-    // this placement did not enter through an engine command.
-    State state(square_palette(Supply::finite(1).value()), std::move(preloaded));
-    auto applied = state.apply(place_at(0, 0, unit(4, 0)));
-    CHECK(!applied);
-    if (!applied) {
-        CHECK(is_candidate(applied.error(), CandidateError::supply_exhausted));
-    }
-    CHECK(state.arrangement().entries().size() == 1);
-}
+    auto mated = state.apply(MateFullEdgesCommand {
+        anchor.value(),
+        EdgeIndex(0),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(2),
+    });
+    CHECK(bool(mated));
+    CHECK(state.arrangement().entries().size() == 2);
 
-TEST_CASE("an arrangement entry absent from the palette is tolerated and left unchanged") {
-    Arrangement preloaded;
-    auto foreign = Placement::make(reference_orientation(bar(99)), unit(0, 10));
-    CHECK(bool(foreign));
-    if (!foreign) {
-        return;
-    }
-    CHECK(bool(preloaded.try_insert(std::move(foreign).value())));
-
-    // The palette offers only prototile 1; prototile 99 is neither rejected nor
-    // rewritten, and does not count against the square's supply.
-    State state(square_palette(Supply::finite(1).value()), std::move(preloaded));
-    auto applied = state.apply(place_at(0, 0, unit(0, 0)));
-    CHECK(bool(applied));
-    if (applied) {
-        CHECK(applied.value() == PlacementId(1));
+    auto spent = state.apply(place_at(0, 0, unit(8, 0)));
+    CHECK(!spent);
+    if (!spent) {
+        CHECK(is_candidate(spent.error(), CandidateError::supply_exhausted));
     }
     CHECK(state.arrangement().entries().size() == 2);
-    CHECK(state.arrangement().entries()[0].id == PlacementId(0));
-    CHECK(state.arrangement().entries()[0].placement.prototile().id() == PrototileId(99));
-    CHECK(state.arrangement().entries()[0].placement.translation() == unit(0, 10));
+}
+
+TEST_CASE("every placement a state holds came from its own palette") {
+    // The stronger construction invariant: with no preloading seam, an
+    // arrangement entry naming a prototile the palette does not offer is
+    // unreachable, so supply derivation never has to tolerate a foreign id.
+    std::vector<PaletteEntry> entries;
+    entries.push_back(make_entry(square(1), Supply::unlimited(), { R }));
+    entries.push_back(make_entry(bar(2), Supply::unlimited(), { R }));
+    State state(level_of(palette_of(std::move(entries))));
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+    CHECK(bool(state.apply(place_at(1, 0, unit(0, 10)))));
+    auto anchor = state.arrangement().entries().front().id;
+    CHECK(bool(state.apply(MateVerticesCommand {
+        anchor,
+        VertexIndex(2),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        VertexIndex(0),
+    })));
+
+    CHECK(state.arrangement().entries().size() == 3);
+    for (const Entry &entry : state.arrangement().entries()) {
+        bool offered = false;
+        for (const PaletteEntry &palette_entry : state.palette().entries()) {
+            if (palette_entry.prototile().id() == entry.placement.prototile().id()) {
+                offered = true;
+            }
+        }
+        CHECK(offered);
+    }
 }
 
 TEST_CASE("finite maximum uint64 supply has no counting overflow path") {
@@ -890,7 +927,7 @@ TEST_CASE("exact placement creates legal partial-edge contact that no mating der
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(bar(1), Supply::unlimited(), { R }));
     entries.push_back(make_entry(square(2), Supply::unlimited(), { R }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
 
     // The anchor bar footprint spans x in [0,4], y in [0,1].
     auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
@@ -1249,7 +1286,7 @@ TEST_CASE("a failed preview preserves the complete core JoinError and changes no
 TEST_CASE("preview uses the selected distinct orientation, not merely the entry") {
     std::vector<PaletteEntry> entries;
     entries.push_back(make_entry(bar(9), Supply::unlimited(), { R, Q, H, T }));
-    State state(palette_of(std::move(entries)), Arrangement());
+    State state(level_of(palette_of(std::move(entries))));
     CHECK(state.palette().entries()[0].orientations().size() == 2);
 
     auto anchor = state.apply(place_at(0, 0, unit(0, 0)));

@@ -4,6 +4,10 @@
 #include "core/Orientation.h"
 #include "core/OrientedPrototile.h"
 #include "core/Prototile.h"
+#include "core/Region.h"
+#include "core/geometry/Coordinate.h"
+#include "core/geometry/ExactInteger.h"
+#include "core/geometry/Point.h"
 #include "core/geometry/Polygon.h"
 #include "engine/Palette.h"
 #include "engine/State.h"
@@ -17,6 +21,15 @@ using namespace tiles;
 using tiles::engine::make_tetromino_state;
 using tiles::engine::PaletteEntry;
 using tiles::engine::State;
+using tiles_test::raw_pt;
+
+namespace {
+
+Point game_unit(std::int64_t p_gx, std::int64_t p_gy) {
+    return raw_pt(p_gx * Coordinate::SCALE, p_gy * Coordinate::SCALE);
+}
+
+} // namespace
 
 TEST_CASE("tetromino state construction succeeds") {
     auto built = make_tetromino_state();
@@ -28,6 +41,59 @@ TEST_CASE("tetromino state arrangement is empty") {
     CHECK(bool(built));
     if (built) {
         CHECK(built.value().arrangement().entries().empty());
+    }
+}
+
+TEST_CASE("tetromino state carries a valid no-hole debug region") {
+    auto built = make_tetromino_state();
+    CHECK(bool(built));
+    if (!built) {
+        return;
+    }
+    const State &state = built.value();
+
+    CHECK(state.region().inner_boundaries().empty());
+    CHECK(state.region().outer_boundary().vertices().size() == 4);
+    // The authored bounds: x in [-8, 36], y in [-30, 8] game units.
+    CHECK(state.region().outer_boundary().vertices().front() == game_unit(-8, -30));
+    CHECK(state.region().doubled_area()
+        == Int256::multiply(
+            static_cast<__int128>(2 * 44 * 38) * Coordinate::SCALE, Coordinate::SCALE));
+    // An empty arrangement over a positive-area region is not solved.
+    CHECK(state.solved() == false);
+}
+
+TEST_CASE("the debug region contains the whole debug arrangement extent") {
+    auto built = make_tetromino_state();
+    CHECK(bool(built));
+    if (!built) {
+        return;
+    }
+    const Region &region = built.value().region();
+
+    // The orientation grid spans x in [0, 28], y in [-16, 0] and the overlap
+    // fixture reaches y = -22; a mated tetromino reaches at most four units
+    // past an anchor. All of that is inside, and the margin ends where the
+    // authored bounds do.
+    auto grid = Polygon::make({
+        game_unit(0, -16), game_unit(28, -16), game_unit(28, 0), game_unit(0, 0) });
+    CHECK(bool(grid));
+    if (grid) {
+        CHECK(region.contains(grid.value()));
+    }
+
+    auto with_margin = Polygon::make({
+        game_unit(-4, -26), game_unit(32, -26), game_unit(32, 4), game_unit(-4, 4) });
+    CHECK(bool(with_margin));
+    if (with_margin) {
+        CHECK(region.contains(with_margin.value()));
+    }
+
+    auto beyond = Polygon::make({
+        game_unit(36, -30), game_unit(40, -30), game_unit(40, 8), game_unit(36, 8) });
+    CHECK(bool(beyond));
+    if (beyond) {
+        CHECK(region.contains(beyond.value()) == false);
     }
 }
 

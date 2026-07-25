@@ -2,8 +2,10 @@
 
 #include "core/Arrangement.h"
 #include "core/Orientation.h"
+#include "core/Region.h"
 #include "core/geometry/Coordinate.h"
 #include "core/geometry/Point.h"
+#include "engine/Level.h"
 
 #include <cstdint>
 #include <utility>
@@ -69,6 +71,30 @@ TetrominoStateError palette_failure(PaletteError p_error) {
     return error;
 }
 
+TetrominoStateError region_polygon_failure(PolygonError p_error) {
+    TetrominoStateError error {};
+    error.stage = TetrominoStateStage::region_outer_polygon;
+    error.polygon_error = p_error;
+    return error;
+}
+
+TetrominoStateError region_failure(RegionError p_error) {
+    TetrominoStateError error {};
+    error.stage = TetrominoStateStage::region;
+    error.region_error = p_error;
+    return error;
+}
+
+// The temporary debug region: one axis-aligned rectangle on exact whole
+// game-unit coordinates, with no holes. The debug arrangement occupies
+// x in [0, 28] and y in [-22, 0], and a mated tetromino reaches at most four
+// units past an anchor, so these bounds leave a clear margin around everything
+// the construction fixture and its interaction can produce.
+constexpr std::int64_t DEBUG_REGION_MIN_X = -8;
+constexpr std::int64_t DEBUG_REGION_MIN_Y = -30;
+constexpr std::int64_t DEBUG_REGION_MAX_X = 36;
+constexpr std::int64_t DEBUG_REGION_MAX_Y = 8;
+
 } // namespace
 
 Result<State, TetrominoStateError> make_tetromino_state() {
@@ -126,8 +152,26 @@ Result<State, TetrominoStateError> make_tetromino_state() {
             palette_failure(palette.error()));
     }
 
+    // Every construction is inspected; no geometry is asserted into existence.
+    auto outer = Polygon::make({
+        unit_point(DEBUG_REGION_MIN_X, DEBUG_REGION_MIN_Y),
+        unit_point(DEBUG_REGION_MAX_X, DEBUG_REGION_MIN_Y),
+        unit_point(DEBUG_REGION_MAX_X, DEBUG_REGION_MAX_Y),
+        unit_point(DEBUG_REGION_MIN_X, DEBUG_REGION_MAX_Y),
+    });
+    if (!outer) {
+        return Result<State, TetrominoStateError>::failure(
+            region_polygon_failure(outer.error()));
+    }
+
+    auto region = Region::make(std::move(outer).value(), {});
+    if (!region) {
+        return Result<State, TetrominoStateError>::failure(
+            region_failure(region.error()));
+    }
+
     return Result<State, TetrominoStateError>::success(
-        State(std::move(palette).value(), Arrangement()));
+        State(Level(std::move(palette).value(), std::move(region).value())));
 }
 
 } // namespace tiles::engine

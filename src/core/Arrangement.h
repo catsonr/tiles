@@ -97,6 +97,16 @@ public:
     // for observing the allocator across a failed operation.
     std::optional<PlacementId> next_id() const;
 
+    // Prove that a placement is insertable right now, without mutating
+    // anything. On success the supplied placement is returned unchanged by
+    // value: no PlacementId is predicted, reserved, or consumed. Failures are
+    // the same typed values in the same precedence try_insert applies — the
+    // first conflicting placement in storage order, then identifier exhaustion.
+    //
+    // This is the one insertion proof. try_insert and both join previews route
+    // through it, so no caller can reach a second, drifting copy of it.
+    Result<Placement, ArrangementError> preview_insert(Placement p_placement) const;
+
     // Insert a placement if its footprint interior is disjoint from every
     // existing footprint. On success allocates the next id and appends. On
     // failure the arrangement is left completely unchanged.
@@ -156,9 +166,10 @@ public:
 
 private:
     // The whole-footprint proof followed by identifier availability, in exactly
-    // the order try_insert applies them. Returns the rejecting error, or nothing
-    // when the placement is currently insertable. Shared so preview and mutation
-    // cannot drift apart in outcome, precedence, or conflict identity.
+    // the order insertion applies them. Returns the rejecting error, or nothing
+    // when the placement is currently insertable. It is reached only through
+    // preview_insert, so preview and mutation cannot drift apart in outcome,
+    // precedence, or conflict identity.
     std::optional<ArrangementError> reject_insertion(const Placement &p_placement) const;
 
     std::vector<Entry> entries_;

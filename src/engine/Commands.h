@@ -114,12 +114,24 @@ enum class CandidateError {
     supply_exhausted,
 };
 
+// The level's region rejecting an otherwise well-formed candidate footprint.
+// It is a distinct alternative rather than another CandidateError because the
+// candidate itself is legitimate: the palette offers it, its supply remains, and
+// its footprint was constructed exactly. Only its position leaves the region.
+enum class RegionPlacementError {
+    outside_region,
+};
+
 // Command failures keep engine and core failures distinct alternatives; core
 // errors are preserved exactly, including ArrangementError::conflicting_placement
 // and JoinError::{code, conflicting_placement}. Nothing is flattened to a string,
 // logged instead of returned, or replaced with a presentation-facing value.
-using PlaceCommandError = std::variant<CandidateError, PlacementError, ArrangementError>;
+using PlaceCommandError = std::variant<
+    CandidateError,
+    PlacementError,
+    RegionPlacementError,
+    ArrangementError>;
 
-using MateCommandError = std::variant<CandidateError, JoinError>;
+using MateCommandError = std::variant<CandidateError, JoinError, RegionPlacementError>;
 
 } // namespace tiles::engine

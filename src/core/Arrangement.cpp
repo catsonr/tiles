@@ -82,11 +82,22 @@ std::optional<ArrangementError> Arrangement::reject_insertion(
     return std::nullopt;
 }
 
-Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placement) {
+Result<Placement, ArrangementError> Arrangement::preview_insert(Placement p_placement) const {
     const std::optional<ArrangementError> rejection = reject_insertion(p_placement);
     if (rejection.has_value()) {
-        return Result<PlacementId, ArrangementError>::failure(rejection.value());
+        return Result<Placement, ArrangementError>::failure(rejection.value());
     }
+    // The exact placement the caller supplied, proven insertable and otherwise
+    // untouched. Nothing is allocated and nothing is observable afterwards.
+    return Result<Placement, ArrangementError>::success(std::move(p_placement));
+}
+
+Result<PlacementId, ArrangementError> Arrangement::try_insert(Placement p_placement) {
+    auto previewed = preview_insert(std::move(p_placement));
+    if (!previewed.has_value()) {
+        return Result<PlacementId, ArrangementError>::failure(previewed.error());
+    }
+    p_placement = std::move(previewed).value();
 
     // The candidate is interior-disjoint from every existing entry, so appending
     // it preserves pairwise interior disjointness. Consume the id only now.
@@ -137,13 +148,13 @@ Result<Placement, JoinError> Arrangement::preview_join_full_edges(
             JoinError { join_code_from_alignment(aligned.error()), std::nullopt });
     }
 
-    const std::optional<ArrangementError> rejection = reject_insertion(aligned.value());
-    if (rejection.has_value()) {
+    auto insertable = preview_insert(std::move(aligned).value());
+    if (!insertable.has_value()) {
         return Result<Placement, JoinError>::failure(
-            join_error_from_arrangement(rejection.value()));
+            join_error_from_arrangement(insertable.error()));
     }
 
-    return Result<Placement, JoinError>::success(std::move(aligned).value());
+    return Result<Placement, JoinError>::success(std::move(insertable).value());
 }
 
 Result<Placement, JoinError> Arrangement::preview_join_vertices(
@@ -164,13 +175,13 @@ Result<Placement, JoinError> Arrangement::preview_join_vertices(
             JoinError { join_code_from_vertex_alignment(aligned.error()), std::nullopt });
     }
 
-    const std::optional<ArrangementError> rejection = reject_insertion(aligned.value());
-    if (rejection.has_value()) {
+    auto insertable = preview_insert(std::move(aligned).value());
+    if (!insertable.has_value()) {
         return Result<Placement, JoinError>::failure(
-            join_error_from_arrangement(rejection.value()));
+            join_error_from_arrangement(insertable.error()));
     }
 
-    return Result<Placement, JoinError>::success(std::move(aligned).value());
+    return Result<Placement, JoinError>::success(std::move(insertable).value());
 }
 
 Result<PlacementId, JoinError> Arrangement::try_join_full_edges(

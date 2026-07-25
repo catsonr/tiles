@@ -310,12 +310,23 @@ const char *describe(ArrangementErrorCode p_code) {
     return "ArrangementErrorCode::<unknown>";
 }
 
+const char *describe(engine::RegionPlacementError p_error) {
+    switch (p_error) {
+        case engine::RegionPlacementError::outside_region:
+            return "RegionPlacementError::outside_region";
+    }
+    return "RegionPlacementError::<unknown>";
+}
+
 const char *describe_place_error(const engine::PlaceCommandError &p_error) {
     if (const auto *candidate = std::get_if<engine::CandidateError>(&p_error)) {
         return describe(*candidate);
     }
     if (const auto *placement = std::get_if<PlacementError>(&p_error)) {
         return describe(*placement);
+    }
+    if (const auto *region = std::get_if<engine::RegionPlacementError>(&p_error)) {
+        return describe(*region);
     }
     if (const auto *arrangement = std::get_if<ArrangementError>(&p_error)) {
         return describe(arrangement->code);
@@ -362,6 +373,11 @@ void report_mate_failure(
             "[tiles] ", p_operation, " failed: ", describe(*candidate));
         return;
     }
+    if (const auto *region = std::get_if<engine::RegionPlacementError>(&p_error)) {
+        godot::UtilityFunctions::push_error(
+            "[tiles] ", p_operation, " failed: ", describe(*region));
+        return;
+    }
     if (const auto *join = std::get_if<JoinError>(&p_error)) {
         if (join->conflicting_placement.has_value()) {
             godot::UtilityFunctions::push_error(
@@ -388,6 +404,10 @@ const char *describe(engine::TetrominoStateStage p_stage) {
             return "TetrominoStateStage::palette_entry";
         case engine::TetrominoStateStage::palette:
             return "TetrominoStateStage::palette";
+        case engine::TetrominoStateStage::region_outer_polygon:
+            return "TetrominoStateStage::region_outer_polygon";
+        case engine::TetrominoStateStage::region:
+            return "TetrominoStateStage::region";
     }
     return "TetrominoStateStage::<unknown>";
 }
@@ -428,6 +448,16 @@ void Editor::_ready() {
     godot::UtilityFunctions::print(
         "[tiles] handcrafted tetromino state constructed: palette order ",
         static_cast<std::int64_t>(state_->palette().order()));
+
+    // The temporary debug region is reported once, with its outer extent and
+    // hole count. Nothing renders it in this act, and no per-placement
+    // containment proof is ever logged.
+    const Bounds region_bounds = bounds_of(state_->region().outer_boundary());
+    godot::UtilityFunctions::print(
+        "[tiles] debug region: outer bounds x [", to_real(region_bounds.min_x), ", ",
+        to_real(region_bounds.max_x), "], y [", to_real(region_bounds.min_y), ", ",
+        to_real(region_bounds.max_y), "], ",
+        static_cast<std::int64_t>(state_->region().inner_boundaries().size()), " holes");
 
     if (!place_orientation_grid()) {
         queue_redraw();
