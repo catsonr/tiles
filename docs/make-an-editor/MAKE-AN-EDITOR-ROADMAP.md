@@ -19,13 +19,27 @@ roadmap
    ├── discuss act 0   ──▶ formalize act 0   ──▶ implementation
    ├── discuss act 0-1 ──▶ formalize act 0-1 ──▶ implementation
    ├── discuss act 0-2 ──▶ formalize act 0-2 ──▶ implementation
-   ├── discuss act 1   ──▶ formalize act 1   ──▶ implementation
+   ├── discuss act 0-3 ──▶ formalize act 0-3 ──▶ implementation
+   ├── discuss act 1   ──▶ formalize act 1   ──▶ superseded before implementation
+   ├── discuss act 1-1 ──▶ formalize act 1-1 ──▶ implementation
    └── discuss act 2   ──▶ formalize act 2   ──▶ implementation
 ```
 
 acts are formalized in order. details deliberately left open by this roadmap
 must be settled while formalizing the act which owns them, not guessed by an
 implementor.
+
+current act status:
+
+```text
+act 0    formalized and implemented
+act 0-1  formalized
+act 0-2  formalized
+act 0-3  formalized
+act 1    formalized, then superseded before implementation
+act 1-1  formalized; this is the editor to implement
+act 2    not yet formalized
+```
 
 ## context
 
@@ -40,11 +54,13 @@ implementor.
 - a Godot `Control` which renders a hardcoded tetromino arrangement; and
 - a first join-oriented selection and placement interaction.
 
-the current surface is a construction fixture, not a level player. it boots
+the current surface is a construction fixture, not a level player. act 0 added
+an exact runtime `Level`, a temporary rectangular debug `Region`, region-aware
+placement legality, and exact completion beneath it. the surface still boots
 with a hardcoded unlimited tetromino palette and a twenty-placement debug
-arrangement. it has no region, level resource, empty-level first placement,
-deletion, undo, full palette interface, completion, authoring, persistence, or
-navigation between authoring and play.
+arrangement. it has no authored level resource, empty-level first placement,
+deletion, undo, palette-resource workflow, region-authoring interface,
+persistence, or navigation between authoring and play.
 
 `MAKE-AN-EDITOR` turns that geometry and placement work into a level-authoring
 loop and the real level player which consumes its output.
@@ -53,11 +69,11 @@ loop and the real level player which consumes its output.
 
 the milestone is complete when the application can:
 
-1. boot into a level editor saturated from the application's canonical
+1. boot into a purpose-built level editor backed by the application's canonical
    Godot-free prototile catalog;
 2. author one connected polygonal region with zero or more polygonal holes;
-3. choose a nonempty palette from the catalog and assign each entry a positive
-   finite or unlimited supply;
+3. build a nonempty palette from that catalog, assign every entry positive
+   finite or unlimited supply, and choose its per-level color;
 4. save the resulting level as a Godot resource and load it again;
 5. launch the real level player with the current in-memory level, whether or not
    it has been saved;
@@ -127,22 +143,52 @@ scope.
 the application does not author prototile geometry.
 
 the application ships one canonical Godot-free content catalog. each entry owns
-one exact `Prototile`, a stable `PrototileId`, a display name, and presentation
-color. the catalog is the sole source of playable prototile geometry.
+one exact `Prototile`, a stable `PrototileId`, and a display name. the catalog
+is the sole source of playable prototile geometry. it owns no color or other
+level-specific presentation.
 
-the editor saturates its catalog view directly from that complete ordered
-catalog and constructs a level palette by selecting catalog ids. level resources
-serialize ids, never prototile vertices, names, colors, or duplicate geometry.
+the editor saturates its palette builder from that complete ordered catalog.
+level resources serialize ids and per-level palette presentation, never
+prototile vertices, catalog names, or duplicate geometry.
+
+the initial catalog contains exactly:
+
+```text
+ids 1–7    seven one-sided tetrominoes
+ids 8–25   eighteen one-sided pentominoes
+id 26      one domino
+ids 27–34  squares of side 1 and 3 through 9
+```
+
+the existing `o` tetromino at id `1` is also the side-2 square. no second
+congruent square identity exists.
 
 the generic tier-1 core remains unrestricted: a `Prototile` may be any polygon
 admitted by the existing exact pipeline. shipped catalog definitions live in a
 separate Godot-free content layer rather than making particular game pieces a
 geometry primitive.
 
-scaling produces a distinct prototile. square tiles of different side lengths,
-for example, receive distinct stable ids and canonical catalog entries. adding
-pentominoes, additional square sizes, or other exact tier-1 content extends the
+scaling produces a distinct prototile. every included square side length
+therefore has its own identity, except that the existing side-2 `o` geometry is
+reused rather than duplicated. adding later exact tier-1 content extends the
 catalog without changing the level-resource schema.
+
+### per-level color
+
+color belongs to one authored palette entry, not to canonical content:
+
+```haskell
+data PaletteEntryResource = PaletteEntryResource
+  { prototileId :: Int
+  , supply      :: Int
+  , color       :: Color
+  }
+```
+
+the editor generates a usable opaque default and permits the author to replace
+it. color remains Godot presentation transport. exact `Palette`, `Level`,
+placement legality, supply, region containment, and completion do not depend on
+it.
 
 ### coordinates and the unit grid
 
@@ -248,10 +294,11 @@ or the still-editable draft loop.
 “negative mode” is an authoring metaphor for adding a hole. it is not a general
 polygon clipping or constructive-solid-geometry operation.
 
-the editor must also permit an existing hole to be selected and removed.
-moving arbitrary existing vertices is desirable but is not required by this
-roadmap; the act-1 discussion will decide whether redraw, per-vertex editing, or
-both belong in its mvp.
+accepted boundaries are one-shot values. the editor does not move existing
+vertices or select and remove individual holes. while a loop is open, its newest
+point may be removed and the loop may be cancelled. after acceptance, correcting
+the region means restarting and redrawing the complete region while the last
+valid resource remains intact until the replacement outer loop succeeds.
 
 ### exact area
 
@@ -332,8 +379,7 @@ PrototileCatalog
     └── ordered [CanonicalPrototile]
                      ├── PrototileId
                      ├── exact Prototile
-                     ├── display name
-                     └── presentation color
+                     └── display name
 ```
 
 the authored resource graph is:
@@ -343,7 +389,8 @@ LevelResource
     ├── PaletteResource
     │     └── [PaletteEntryResource]
     │             ├── prototile id
-    │             └── supply
+    │             ├── supply
+    │             └── per-level color
     └── RegionResource
           ├── PolygonResource outer
           └── [PolygonResource holes]
@@ -359,6 +406,7 @@ data PolygonResource = PolygonResource
 data PaletteEntryResource = PaletteEntryResource
   { prototileId :: Int
   , supply      :: Int
+  , color       :: Color
   }
 
 data PaletteResource = PaletteResource
@@ -392,8 +440,9 @@ bounds rather than cast negative or out-of-range values.
 resource prototile id `0` is valid. negative ids are invalid. every nonnegative
 id must resolve to one entry in the canonical catalog or compilation fails.
 
-`displayName` and `color` come from the canonical catalog. they are presentation
-metadata and do not become part of core `Prototile` identity or geometry.
+`displayName` comes from the canonical catalog. `color` comes from the authored
+level palette entry. neither becomes part of core `Prototile` identity or
+geometry.
 
 only per-level region vertices cross the Godot numeric boundary. prototile
 geometry is constructed exactly from canonical content definitions and is never
@@ -467,7 +516,7 @@ authoritative footprint.
 
 the player renders every palette entry in authored order. each entry shows:
 
-- its canonical-catalog color;
+- its level-authored color;
 - its prototile shape;
 - which entry is selected;
 - the selected distinct orientation;
@@ -477,17 +526,19 @@ the player renders every palette entry in authored order. each entry shows:
 palette order remains the number of prototile entries, not the number of
 distinct orientations or the sum of supplies.
 
-the level editor uses the complete canonical catalog to add and remove palette
-entries and edit their supplies. it must prevent or diagnose an empty palette,
-duplicate prototile identities, zero finite supply, and unknown catalog ids.
+the level editor builds an embedded `PaletteResource` directly from the complete
+catalog. one visible row per catalog entry controls membership, unlimited or
+positive finite supply, and opaque per-level color. row identity makes duplicate
+and unknown ids unrepresentable; excluded rows are absent rather than encoded
+with zero supply. resource order follows catalog order.
 
 ## application ownership
 
 the milestone now has two meaningful application states, so the disposable
 single-node scene is no longer sufficient.
 
-act 1 produces a standalone `LevelEditor` which publishes a typed play request
-carrying its current valid `Ref<LevelResource>`. it does not require a
+act 1-1 produces a standalone `LevelEditor` which publishes a typed play
+request carrying its current valid `Ref<LevelResource>`. it does not require a
 placeholder player or own a transition to a player which does not yet exist.
 
 act 2 introduces the minimal application host together with the real
@@ -570,7 +621,8 @@ the exact runtime model.
 it includes:
 
 - a Godot-free canonical content catalog with stable ids, exact prototiles,
-  display names, colors, ordered lookup, and the existing tetromino definitions;
+  display names, temporary catalog colors, ordered lookup, and the existing
+  tetromino definitions;
 - registered polygon, palette-entry, palette, region, and level resources;
 - inspector-visible properties and resource-type hints;
 - id-only palette serialization and checked canonical-catalog lookup;
@@ -599,42 +651,92 @@ validated against the canonical catalog, and compiled into one equivalent exact
 Level without serializing prototile geometry.
 ```
 
-### act 1 — level editor
+act 0-3 deliberately supersedes act-0-2's catalog-color and initial-content
+boundaries after this foundation is complete.
 
-act 1 produces a complete level resource through an interactive authoring
-surface.
+### act 0-3 — complete initial catalog and per-level color
+
+act 0-3 completes the first shipped polygon set and moves presentation color
+from global content into each authored level palette entry.
 
 it includes:
 
-- booting into `LevelEditor` with a predetermined catalog;
-- creating a new draft and loading an existing level;
-- positive outer-boundary drawing on the integer grid;
-- negative hole-boundary drawing on the integer grid;
-- visible open-loop previews and close/cancel behavior;
-- exact validation feedback without destroying the last valid region;
-- selecting and removing authored holes;
-- catalog rendering and palette membership editing;
-- positive finite and unlimited supply editing;
-- clear invalid-draft diagnostics;
-- save and save-as;
-- publishing a typed play request carrying the current in-memory valid
-  `Ref<LevelResource>`.
+- retaining tetromino ids `1` through `7`;
+- all 18 one-sided pentominoes at ids `8` through `25`;
+- one domino at id `26`;
+- squares of side `1` through `9`, with existing `o` id `1` serving as side `2`;
+- exact private unit-cell bitmap-to-boundary construction for shipped
+  polyominoes;
+- fixed catalog order, ids, family-qualified display names, and orientation
+  counts;
+- removal of catalog color;
+- per-level `Color` on `PaletteEntryResource`;
+- authored color persistence beside id and supply;
+- unchanged presentation-free exact engine compilation; and
+- expanded native catalog and headless resource-integration coverage.
 
-the act-1 formalization must decide the precise region correction workflow,
-input bindings, resource-path interface, minimum palette controls, and exact
-play-request interface.
-
-it does not include prototile geometry authoring, arbitrary boolean polygon
-subtraction, disconnected positive regions, automated solvability search,
-campaign metadata, a level selector, `LevelPlayer`, the application host,
-editor/player transitions, or player completion polish.
+it does not include runtime polyomino construction, placement reflection,
+hexominoes, square sizes above `9`, palette UI, or player rendering.
 
 acceptance:
 
 ```text
-a human can author outer and negative boundaries, choose a supplied palette,
-save the LevelResource, reload it, and publish the same current valid in-memory
-resource through the typed play-request boundary.
+the Godot-free catalog contains exactly the initial 34 unique polygon
+identities, while every level palette entry independently persists its own
+presentation color without moving color into the exact engine.
+```
+
+### act 1 — superseded region-only editor plan
+
+act 1 was formalized as a region-only editor consuming an external
+`PaletteResource`. before implementation, palette authoring and per-level color
+were moved into the editor. the immutable act-1 document remains as the
+region-authoring base contract, but its external-palette boundary must not be
+implemented.
+
+### act 1-1 — level editor
+
+act 1-1 supersedes act 1 and produces a complete valid level resource through a
+small internal authoring surface.
+
+it includes:
+
+- booting directly into a new unsaved `LevelResource`;
+- an embedded palette built from all canonical catalog entries;
+- one visible catalog row per exact prototile;
+- shape preview, membership, positive finite or unlimited supply, and opaque
+  per-level color;
+- structurally preventing duplicate, unknown, zero-supply, and reordered
+  palette entries;
+- opening an existing draft and mapping its palette into catalog rows;
+- positive outer-boundary drawing on the integer grid;
+- negative hole-boundary drawing on the integer grid;
+- visible open-loop previews and close/cancel behavior;
+- exact validation feedback without destroying the last valid region;
+- one-shot accepted boundaries and complete-region restart as the correction
+  workflow;
+- a visible integer grid with simple pan, zoom, and snapped-coordinate feedback;
+- short visible instructions and ordinary, context-sensitive controls;
+- clear invalid-draft diagnostics;
+- save and save-as;
+- a full compilation gate before every save;
+- publishing a typed play request carrying the current in-memory valid
+  `Ref<LevelResource>`.
+
+it does not include palette files, palette import/export, palette reordering,
+accepted-vertex editing, individual-hole removal, authoring undo/redo,
+prototile geometry authoring, arbitrary boolean polygon subtraction,
+disconnected positive regions, automated solvability search, campaign
+metadata, a level selector, `LevelPlayer`, the application host, editor/player
+transitions, or player completion polish.
+
+acceptance:
+
+```text
+a human can choose exact catalog pieces, supplies, and colors; draw one outer
+boundary and zero or more holes; save only a successfully compiled
+LevelResource; reopen it; and publish the same current valid in-memory resource
+through the typed play-request boundary.
 ```
 
 ### act 2 — level player and clear condition
@@ -649,7 +751,8 @@ it includes:
 - accepting and compiling any valid in-memory `LevelResource`;
 - starting with an empty arrangement and fresh play history;
 - rendering the positive region and visually clear negative holes;
-- rendering all palette entries, orientations, selection, and remaining supply;
+- rendering all palette entries with their level-authored colors, orientations,
+  selection, and remaining supply;
 - placing the first tile and subsequent tiles under the settled exact input
   policy;
 - legal/illegal placement previews;
@@ -688,7 +791,10 @@ act 0: exact Region, Level, legality, solved
     ├──────────────▶ act 0-2: Godot resources and compiler
     │                         │
     │                         ▼
-    │                    act 1: LevelEditor
+    │                 act 0-3: catalog + color
+    │                         │
+    │                         ▼
+    │                act 1-1: LevelEditor
     │                         │
     ▼                         │
 act 0-1: deletion and history │
@@ -699,8 +805,10 @@ act 0-1: deletion and history │
 ```
 
 act 0-1 is conceptually independent of resource representation. act 0-2
-depends only on the public exact values established by act 0. act 1 authors
-resources and terminates at a typed play request without owning play semantics.
+depends only on the public exact values established by act 0. act 0-3 completes
+the catalog and color transport established by act 0-2. act 1-1 builds an
+embedded palette and region, then terminates at a typed play request without
+owning play semantics.
 act 2 consumes all prior public surfaces, introduces the application host, and
 contains the integrated player interaction and both application-state
 transitions.
@@ -729,6 +837,9 @@ transitions.
 - non-quarter-turn rotation rules;
 - reflected placements;
 - in-application prototile creation;
+- palette files, import/export, presets, and reordering;
+- accepted-boundary vertex editing and individual-hole correction;
+- authoring undo and redo;
 - disconnected positive targets;
 - arbitrary polygon boolean operations;
 - automated solvability proof or solution search;
@@ -748,12 +859,13 @@ for them without a new scope decision.
 
 `MAKE-IT-FUN` receives:
 
-- one extensible canonical catalog of reusable exact prototiles;
+- one 34-entry extensible canonical catalog of reusable exact prototiles;
 - persistent hole-bearing level resources;
-- a practical level editor;
+- a purpose-built palette-and-region editor which emits only compiled-valid
+  level saves;
 - a reusable level player;
 - exact placement legality and completion;
-- palette rendering with remaining supply;
+- palette rendering with per-level color and remaining supply;
 - deletion and undo;
 - several human-authored, manually solvable levels; and
 - observed evidence about what placing tiles actually feels like.
