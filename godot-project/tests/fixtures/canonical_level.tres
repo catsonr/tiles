@@ -1,0 +1,31 @@
+[gd_resource type="LevelResource" load_steps=8 format=3]
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_o"]
+prototile_id = 1
+supply = 3
+color = Color(0.75, 0.5, 0.25, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_i"]
+prototile_id = 2
+supply = -1
+color = Color(0.25, 0.75, 0.5, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_level"]
+entries = [SubResource("PaletteEntryResource_o"), SubResource("PaletteEntryResource_i")]
+
+[sub_resource type="PolygonResource" id="PolygonResource_outer"]
+vertices = PackedVector2Array(0, 0, 10, 0, 10, 6.5, 0, 6.5)
+
+[sub_resource type="PolygonResource" id="PolygonResource_hole_0"]
+vertices = PackedVector2Array(2, 2, 4, 2, 4, 4, 2, 4)
+
+[sub_resource type="PolygonResource" id="PolygonResource_hole_1"]
+vertices = PackedVector2Array(6, 1.5, 8, 1.5, 8, 3.5, 6, 3.5)
+
+[sub_resource type="RegionResource" id="RegionResource_level"]
+outer_boundary = SubResource("PolygonResource_outer")
+inner_boundaries = [SubResource("PolygonResource_hole_0"), SubResource("PolygonResource_hole_1")]
+
+[resource]
+palette = SubResource("PaletteResource_level")
+region = SubResource("RegionResource_level")

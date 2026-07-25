@@ -1,5 +1,6 @@
 #include "game/Editor.h"
 
+#include "content/PrototileCatalog.h"
 #include "core/Arrangement.h"
 #include "core/OrientedPrototile.h"
 #include "core/Placement.h"
@@ -22,6 +23,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -41,23 +43,10 @@ namespace {
 // placements may legally touch along complete edges, partial edges, or points.
 constexpr std::int64_t CELL_UNITS = 4;
 
-// The debug column order i, o, t, s, z, j, l, resolved against the handcrafted
-// palette's authored order o, i, t, s, z, j, l. The label exists only to make
-// bootstrap diagnostics readable.
-struct DebugColumn final {
-    std::size_t palette_entry;
-    const char *label;
-};
-
-constexpr DebugColumn DEBUG_COLUMNS[] = {
-    { 1, "i" },
-    { 0, "o" },
-    { 2, "t" },
-    { 3, "s" },
-    { 4, "z" },
-    { 5, "j" },
-    { 6, "l" },
-};
+// The debug column order i, o, t, s, z, j, l, given as indices into the
+// temporary palette's authored order o, i, t, s, z, j, l. Readable labels come
+// from the canonical catalog, so no display-name table exists here.
+constexpr std::size_t DEBUG_COLUMNS[] = { 1, 0, 2, 3, 4, 5, 6 };
 
 constexpr std::size_t DEBUG_COLUMN_COUNT = sizeof(DEBUG_COLUMNS) / sizeof(DEBUG_COLUMNS[0]);
 
@@ -222,11 +211,8 @@ bool shares_edge_contact(const Polygon &p_footprint, const Arrangement &p_arrang
     return false;
 }
 
-// --- debug colors ---
+// --- construction-fixture colors ---
 
-// Color is selected by exact prototile identity, so every orientation and every
-// placement of one mino shares one color. Channel values are debug presentation,
-// not domain state.
 // Outline width and the shared boundary style. Every drawn tile is outlined in
 // a darkened form of its own fill, so edges read individually where identical
 // colors meet without introducing a second palette to maintain.
@@ -251,25 +237,24 @@ godot::PackedVector2Array closed_boundary(const godot::PackedVector2Array &p_poi
     return closed;
 }
 
-godot::Color color_for(PrototileId p_id) {
-    switch (p_id.value()) {
-        case 1:
-            return godot::Color(0.95f, 0.85f, 0.20f); // o: yellow
-        case 2:
-            return godot::Color(0.20f, 0.80f, 0.92f); // i: cyan
-        case 3:
-            return godot::Color(0.66f, 0.35f, 0.86f); // t: purple
-        case 4:
-            return godot::Color(0.28f, 0.78f, 0.34f); // s: green
-        case 5:
-            return godot::Color(0.89f, 0.24f, 0.24f); // z: red
-        case 6:
-            return godot::Color(0.24f, 0.44f, 0.92f); // j: blue
-        case 7:
-            return godot::Color(0.96f, 0.55f, 0.14f); // l: orange
-        default:
-            return godot::Color(1.0f, 0.0f, 1.0f); // conspicuous magenta
-    }
+// The golden-ratio conjugate. Successive multiples of it are spread as evenly
+// as an irrational rotation can spread them, so consecutive ids never land on
+// neighbouring hues and no id needs an authored entry.
+constexpr double HUE_STEP = 0.61803398874989484820;
+constexpr float FIXTURE_SATURATION = 0.62f;
+constexpr float FIXTURE_VALUE = 0.92f;
+
+// One deterministic opaque color per prototile identity, derived from the id
+// alone. Every orientation and every placement of one prototile therefore share
+// one color.
+//
+// This is disposable presentation for the construction fixture only. Canonical
+// content owns no color, and the real level editor and player read each level's
+// authored palette-entry color instead; nothing here is a color policy for them.
+godot::Color fixture_color(PrototileId p_id) {
+    const double hue = std::fmod(static_cast<double>(p_id.value()) * HUE_STEP, 1.0);
+    return godot::Color::from_hsv(
+        static_cast<float>(hue), FIXTURE_SATURATION, FIXTURE_VALUE);
 }
 
 // --- diagnostic rendering of typed errors ---
@@ -394,12 +379,24 @@ void report_mate_failure(
         "[tiles] ", p_operation, " failed: MateCommandError::<unknown alternative>");
 }
 
+const char *describe(content::PrototileCatalogStage p_stage) {
+    switch (p_stage) {
+        case content::PrototileCatalogStage::definition:
+            return "PrototileCatalogStage::definition";
+        case content::PrototileCatalogStage::polygon:
+            return "PrototileCatalogStage::polygon";
+        case content::PrototileCatalogStage::prototile:
+            return "PrototileCatalogStage::prototile";
+        case content::PrototileCatalogStage::catalog:
+            return "PrototileCatalogStage::catalog";
+    }
+    return "PrototileCatalogStage::<unknown>";
+}
+
 const char *describe(engine::TetrominoStateStage p_stage) {
     switch (p_stage) {
-        case engine::TetrominoStateStage::polygon:
-            return "TetrominoStateStage::polygon";
-        case engine::TetrominoStateStage::prototile:
-            return "TetrominoStateStage::prototile";
+        case engine::TetrominoStateStage::catalog_lookup:
+            return "TetrominoStateStage::catalog_lookup";
         case engine::TetrominoStateStage::palette_entry:
             return "TetrominoStateStage::palette_entry";
         case engine::TetrominoStateStage::palette:
@@ -429,8 +426,41 @@ void report_place_failure(
 
 void Editor::_bind_methods() {}
 
+const char *Editor::label_for(PrototileId p_id) const {
+    if (!catalog_.has_value()) {
+        return "<no catalog>";
+    }
+    const content::CanonicalPrototile *canonical = catalog_->find(p_id);
+    if (canonical == nullptr) {
+        return "<unknown prototile>";
+    }
+    return canonical->display_name().c_str();
+}
+
 void Editor::_ready() {
-    auto state = engine::make_tetromino_state();
+    // The catalog is the sole source of playable geometry, so a defective one is
+    // fatal to this scene and is reported through its own typed stages rather
+    // than collapsed into a boolean.
+    auto catalog = content::make_canonical_prototile_catalog();
+    if (!catalog) {
+        const content::PrototileCatalogError &error = catalog.error();
+        godot::UtilityFunctions::push_error(
+            "[tiles] bootstrap failed: make_canonical_prototile_catalog at ",
+            describe(error.stage),
+            error.prototile_id.has_value() ? ", prototile id " : ", no prototile id",
+            error.prototile_id.has_value()
+                ? static_cast<std::int64_t>(error.prototile_id.value().value())
+                : static_cast<std::int64_t>(0));
+        queue_redraw();
+        return;
+    }
+
+    catalog_ = std::move(catalog).value();
+    godot::UtilityFunctions::print(
+        "[tiles] canonical catalog constructed: ",
+        static_cast<std::int64_t>(catalog_->entries().size()), " prototiles");
+
+    auto state = engine::make_tetromino_state(catalog_.value());
     if (!state) {
         const engine::TetrominoStateError &error = state.error();
         godot::UtilityFunctions::push_error(
@@ -580,22 +610,24 @@ bool Editor::place_orientation_grid() {
     std::size_t placed = 0;
 
     for (std::size_t column = 0; column < DEBUG_COLUMN_COUNT; ++column) {
-        const DebugColumn &spec = DEBUG_COLUMNS[column];
+        const std::size_t palette_entry = DEBUG_COLUMNS[column];
 
-        if (spec.palette_entry >= state.palette().entries().size()) {
+        if (palette_entry >= state.palette().entries().size()) {
             godot::UtilityFunctions::push_error(
-                "[tiles] debug grid failed: mino ", spec.label,
-                " names palette entry ", static_cast<std::int64_t>(spec.palette_entry),
+                "[tiles] debug grid failed: column ", static_cast<std::int64_t>(column),
+                " names palette entry ", static_cast<std::int64_t>(palette_entry),
                 " but the palette holds only ",
                 static_cast<std::int64_t>(state.palette().entries().size()));
             return false;
         }
 
+        const engine::PaletteEntry &entry = state.palette().entries()[palette_entry];
+        const char *label = label_for(entry.prototile().id());
+
         // Distinct compiled orientations only. equivalent_orientations() records
         // which requested angles collapsed onto one boundary and is never
         // iterated as though its labels were separate drawable geometry.
-        const std::vector<OrientedPrototile> &orientations =
-            state.palette().entries()[spec.palette_entry].orientations();
+        const std::vector<OrientedPrototile> &orientations = entry.orientations();
 
         for (std::size_t row = 0; row < orientations.size(); ++row) {
             const Bounds bounds = bounds_of(orientations[row].canonical_polygon());
@@ -604,7 +636,7 @@ bool Editor::place_orientation_grid() {
             auto height = checked_subtract(bounds.max_y, bounds.min_y);
             if (!width || !height) {
                 godot::UtilityFunctions::push_error(
-                    "[tiles] debug grid failed: mino ", spec.label,
+                    "[tiles] debug grid failed: mino ", label,
                     ", orientation ", static_cast<std::int64_t>(row),
                     ", extent arithmetic overflowed");
                 return false;
@@ -613,7 +645,7 @@ bool Editor::place_orientation_grid() {
             if (width.value().raw() > CELL_UNITS * Coordinate::SCALE
                 || height.value().raw() > CELL_UNITS * Coordinate::SCALE) {
                 godot::UtilityFunctions::push_error(
-                    "[tiles] debug grid failed: mino ", spec.label,
+                    "[tiles] debug grid failed: mino ", label,
                     ", orientation ", static_cast<std::int64_t>(row),
                     ", exceeds its ", static_cast<std::int64_t>(CELL_UNITS),
                     " game-unit cell");
@@ -631,14 +663,14 @@ bool Editor::place_orientation_grid() {
             auto translation_y = checked_subtract(cell_max_y, bounds.max_y);
             if (!translation_x || !translation_y) {
                 godot::UtilityFunctions::push_error(
-                    "[tiles] debug grid failed: mino ", spec.label,
+                    "[tiles] debug grid failed: mino ", label,
                     ", orientation ", static_cast<std::int64_t>(row),
                     ", cell translation overflowed");
                 return false;
             }
 
             const engine::PlaceCommand command {
-                engine::PaletteEntryIndex(spec.palette_entry),
+                engine::PaletteEntryIndex(palette_entry),
                 engine::PaletteOrientationIndex(row),
                 Point { translation_x.value(), translation_y.value() },
             };
@@ -646,7 +678,7 @@ bool Editor::place_orientation_grid() {
             auto result = state.apply(command);
             if (!result) {
                 report_place_failure(
-                    "debug grid placement", spec.label, spec.palette_entry, row, result.error());
+                    "debug grid placement", label, palette_entry, row, result.error());
                 return false;
             }
 
@@ -676,12 +708,20 @@ bool Editor::place_overlap_fixture() {
     const engine::PaletteEntryIndex fixture_entry(0);
     const engine::PaletteOrientationIndex fixture_orientation(0);
 
+    if (state.palette().entries().empty()) {
+        godot::UtilityFunctions::push_error(
+            "[tiles] overlap fixture failed: the palette is empty");
+        return false;
+    }
+    const char *label =
+        label_for(state.palette().entries()[fixture_entry.value()].prototile().id());
+
     const Point first_translation { game_units(0), game_units(FIXTURE_ORIGIN_Y_UNITS) };
 
     auto first = state.apply(
         engine::PlaceCommand { fixture_entry, fixture_orientation, first_translation });
     if (!first) {
-        report_place_failure("overlap fixture (first o)", "o", 0, 0, first.error());
+        report_place_failure("overlap fixture (first placement)", label, 0, 0, first.error());
         return false;
     }
 
@@ -705,7 +745,7 @@ bool Editor::place_overlap_fixture() {
 
     if (second) {
         godot::UtilityFunctions::push_error(
-            "[tiles] overlap fixture failed: the overlapping o was accepted as placement ",
+            "[tiles] overlap fixture failed: the overlapping ", label, " was accepted as placement ",
             static_cast<std::int64_t>(second.value().value()));
         return false;
     }
@@ -736,7 +776,7 @@ bool Editor::place_overlap_fixture() {
             "[tiles] overlap fixture failed: conflict names placement ",
             static_cast<std::int64_t>(
                 arrangement_error->conflicting_placement.value().value()),
-            " but the fixture o is placement ",
+            " but the fixture ", label, " is placement ",
             static_cast<std::int64_t>(first_id.value()));
         return false;
     }
@@ -744,7 +784,7 @@ bool Editor::place_overlap_fixture() {
     // The expected rejection is successful act behavior, so it is reported
     // informationally rather than as an error.
     godot::UtilityFunctions::print(
-        "[tiles] overlap fixture: second o rejected with interior_overlap against placement ",
+        "[tiles] overlap fixture: a second ", label, " was rejected with interior_overlap against placement ",
         static_cast<std::int64_t>(first_id.value()), " (expected)");
 
     if (state.arrangement().entries().size() != entries_before) {
@@ -1165,7 +1205,7 @@ void Editor::draw_selection_preview() {
             godot::Vector2(static_cast<real_t>(screen_x), static_cast<real_t>(screen_y)));
     }
 
-    const godot::Color fill = color_for(candidate->prototile().id());
+    const godot::Color fill = fixture_color(candidate->prototile().id());
     draw_colored_polygon(points, fill);
     draw_polyline(closed_boundary(points), outline_for(fill), OUTLINE_WIDTH);
 }
@@ -1184,7 +1224,7 @@ void Editor::draw_active_ghost() {
         return;
     }
 
-    godot::Color fill = color_for(placement.prototile().id());
+    godot::Color fill = fixture_color(placement.prototile().id());
     fill.a = GHOST_ALPHA;
     draw_colored_polygon(points, fill);
 
@@ -1210,7 +1250,7 @@ void Editor::_draw() {
         const godot::PackedVector2Array points =
             project_footprint(entry.placement.footprint());
 
-        const godot::Color fill = color_for(entry.placement.prototile().id());
+        const godot::Color fill = fixture_color(entry.placement.prototile().id());
         draw_colored_polygon(points, fill);
         draw_polyline(closed_boundary(points), outline_for(fill), OUTLINE_WIDTH);
     }

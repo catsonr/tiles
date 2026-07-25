@@ -1,5 +1,6 @@
 #include "TestHarness.h"
 
+#include "content/PrototileCatalog.h"
 #include "core/Arrangement.h"
 #include "core/Orientation.h"
 #include "core/OrientedPrototile.h"
@@ -15,12 +16,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 using namespace tiles;
+using tiles::content::CanonicalDefinition;
+using tiles::content::PrototileCatalog;
 using tiles::engine::make_tetromino_state;
 using tiles::engine::PaletteEntry;
 using tiles::engine::State;
+using tiles::engine::TetrominoStateStage;
 using tiles_test::raw_pt;
 
 namespace {
@@ -29,15 +34,36 @@ Point game_unit(std::int64_t p_gx, std::int64_t p_gy) {
     return raw_pt(p_gx * Coordinate::SCALE, p_gy * Coordinate::SCALE);
 }
 
+// The one canonical catalog, built once per case exactly as the application
+// does. Every bootstrap fact below is therefore a fact about shipped content
+// resolved through the ordinary lookup, not about a fixture table.
+std::optional<PrototileCatalog> canonical_catalog() {
+    auto built = content::make_canonical_prototile_catalog();
+    if (!built) {
+        return std::nullopt;
+    }
+    return std::move(built).value();
+}
+
 } // namespace
 
-TEST_CASE("tetromino state construction succeeds") {
-    auto built = make_tetromino_state();
+TEST_CASE("tetromino state construction succeeds against the canonical catalog") {
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
 }
 
 TEST_CASE("tetromino state arrangement is empty") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (built) {
         CHECK(built.value().arrangement().entries().empty());
@@ -45,7 +71,12 @@ TEST_CASE("tetromino state arrangement is empty") {
 }
 
 TEST_CASE("tetromino state carries a valid no-hole debug region") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -64,7 +95,12 @@ TEST_CASE("tetromino state carries a valid no-hole debug region") {
 }
 
 TEST_CASE("the debug region contains the whole debug arrangement extent") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -98,7 +134,12 @@ TEST_CASE("the debug region contains the whole debug arrangement extent") {
 }
 
 TEST_CASE("tetromino palette order and ids are o,i,t,s,z,j,l / 1..7") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -113,8 +154,38 @@ TEST_CASE("tetromino palette order and ids are o,i,t,s,z,j,l / 1..7") {
     }
 }
 
+TEST_CASE("every bootstrap palette geometry comes from its matching catalog id") {
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
+    CHECK(bool(built));
+    if (!built) {
+        return;
+    }
+    // The bootstrap owns no geometry of its own: every runtime prototile must be
+    // exactly the catalog entry its id names.
+    for (const PaletteEntry &entry : built.value().palette().entries()) {
+        const content::CanonicalPrototile *canonical =
+            catalog->find(entry.prototile().id());
+        CHECK(canonical != nullptr);
+        if (canonical == nullptr) {
+            continue;
+        }
+        CHECK(same_boundary(entry.prototile().polygon(), canonical->prototile().polygon()));
+        CHECK(canonical->display_name().empty() == false);
+    }
+}
+
 TEST_CASE("every tetromino supply is unlimited") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -125,7 +196,12 @@ TEST_CASE("every tetromino supply is unlimited") {
 }
 
 TEST_CASE("per-entry distinct orientation counts are 1,2,4,2,2,4,4 totalling nineteen") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -142,7 +218,12 @@ TEST_CASE("per-entry distinct orientation counts are 1,2,4,2,2,4,4 totalling nin
 }
 
 TEST_CASE("tetromino representatives and equivalent groups agree with the core compiler") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -174,7 +255,12 @@ TEST_CASE("tetromino representatives and equivalent groups agree with the core c
 }
 
 TEST_CASE("every tetromino reference and oriented polygon is valid core geometry") {
-    auto built = make_tetromino_state();
+    auto catalog = canonical_catalog();
+    CHECK(catalog.has_value());
+    if (!catalog) {
+        return;
+    }
+    auto built = make_tetromino_state(catalog.value());
     CHECK(bool(built));
     if (!built) {
         return;
@@ -189,4 +275,40 @@ TEST_CASE("every tetromino reference and oriented polygon is valid core geometry
             CHECK(polygon.triangulation().size() == polygon.vertices().size() - 2);
         }
     }
+}
+
+TEST_CASE("a catalog missing an expected bootstrap id fails through the typed seam") {
+    // The shipped catalog always contains ids 1..7, so the failure is exercised
+    // through the same construction path against a deliberately incomplete
+    // catalog rather than being assumed unreachable and untested.
+    std::vector<CanonicalDefinition> definitions;
+    for (const CanonicalDefinition &definition : content::canonical_definitions()) {
+        if (definition.id == 3) {
+            continue;
+        }
+        definitions.push_back(definition);
+    }
+
+    auto partial = content::testing::make_catalog(definitions);
+    CHECK(bool(partial));
+    if (!partial) {
+        return;
+    }
+    CHECK(partial.value().find(PrototileId(3)) == nullptr);
+
+    auto built = make_tetromino_state(partial.value());
+    CHECK(bool(built) == false);
+    if (built) {
+        return;
+    }
+    CHECK(built.error().stage == TetrominoStateStage::catalog_lookup);
+    CHECK(built.error().prototile_id.has_value());
+    if (built.error().prototile_id.has_value()) {
+        CHECK(built.error().prototile_id.value() == PrototileId(3));
+    }
+    // A lookup failure is the complete fact; no underlying core error exists.
+    CHECK(built.error().polygon_error.has_value() == false);
+    CHECK(built.error().orientation_error.has_value() == false);
+    CHECK(built.error().palette_error.has_value() == false);
+    CHECK(built.error().region_error.has_value() == false);
 }

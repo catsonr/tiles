@@ -9,6 +9,7 @@
 #include "core/geometry/Coordinate.h"
 #include "core/geometry/Point.h"
 #include "core/geometry/Polygon.h"
+#include "content/PrototileCatalog.h"
 #include "core/Region.h"
 #include "engine/Commands.h"
 #include "engine/Level.h"
@@ -19,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -60,6 +62,21 @@ Point unit(std::int64_t p_gx, std::int64_t p_gy) {
 Prototile square(std::uint64_t p_id) {
     auto polygon = Polygon::make({ unit(0, 0), unit(2, 0), unit(2, 2), unit(0, 2) });
     return std::move(Prototile::make(PrototileId(p_id), std::move(polygon).value())).value();
+}
+
+// The temporary tetromino construction fixture, built from the canonical
+// catalog exactly as the application builds it. Returns nothing if either
+// construction fails, so a caller inspects one optional rather than two results.
+std::optional<State> tetromino_state() {
+    auto catalog = content::make_canonical_prototile_catalog();
+    if (!catalog) {
+        return std::nullopt;
+    }
+    auto built = tiles::engine::make_tetromino_state(catalog.value());
+    if (!built) {
+        return std::nullopt;
+    }
+    return std::move(built).value();
 }
 
 // A 4x1 bar: two distinct orientations under the quarter turns.
@@ -998,8 +1015,8 @@ TEST_CASE("deletion makes a solved state unsolved, with no stored completion fla
 // ---------------------------------------------------------------------------
 
 TEST_CASE("full-edge mating resolves its candidate through the palette and succeeds") {
-    auto built = tiles::engine::make_tetromino_state();
-    CHECK(bool(built));
+    auto built = tetromino_state();
+    CHECK(built.has_value());
     if (!built) {
         return;
     }
@@ -1531,8 +1548,8 @@ TEST_CASE("a successful preview consumes neither finite supply nor a placement i
 }
 
 TEST_CASE("a successful preview and an immediate apply agree exactly") {
-    auto built = tiles::engine::make_tetromino_state();
-    CHECK(bool(built));
+    auto built = tetromino_state();
+    CHECK(built.has_value());
     if (!built) {
         return;
     }

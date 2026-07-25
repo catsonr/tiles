@@ -57,8 +57,9 @@ library = env.SharedLibrary(
 
 Default(library)
 
-# Native core-and-engine tests: a dependency-free executable built from
-# src/core/, src/engine/, and tests/ with a plain toolchain environment,
+# Native content-core-and-engine tests: a dependency-free executable built from
+# src/core/, src/content/, src/engine/, and tests/ with a plain toolchain
+# environment,
 # deliberately unaware of godot-cpp. Invoke explicitly with `scons tests`; it is
 # never part of the default build. Object files use the default `.o` suffix, so
 # they never collide with the shared library's `.os` objects for the same
@@ -68,7 +69,7 @@ test_env.Append(CPPPATH=["src/"])
 test_env.Append(CXXFLAGS=["-std=c++17"])
 
 test_sources = []
-for tree in ("src/core", "src/engine", "tests"):
+for tree in ("src/core", "src/content", "src/engine", "tests"):
     for root, _dirs, _files in sorted(os.walk(tree)):
         test_sources += sorted(Glob(os.path.join(root, "*.cpp")))
 

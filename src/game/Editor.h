@@ -1,5 +1,6 @@
 #pragma once
 
+#include "content/PrototileCatalog.h"
 #include "core/OrientedPrototile.h"
 #include "core/Placement.h"
 #include "engine/Commands.h"
@@ -16,10 +17,11 @@
 
 namespace tiles::game {
 
-// The application's only scene: one fullscreen Control which owns a handcrafted
-// engine::State, populates it exclusively through typed engine commands, renders
-// the resulting authoritative arrangement, and drives the first player-facing
-// construction loop over it.
+// The application's only scene: one fullscreen Control which owns the canonical
+// prototile catalog and a temporary engine::State built from it, populates that
+// state exclusively through typed engine commands, renders the resulting
+// authoritative arrangement, and drives the first player-facing construction
+// loop over it.
 //
 // The dependency direction is one-way. This class sends commands down into the
 // engine and reads its const arrangement view back out; no Godot value, pixel
@@ -80,6 +82,11 @@ private:
         std::size_t offered = 0;
     };
 
+    // The catalog display name for one prototile identity, or a conspicuous
+    // placeholder when the catalog has no such entry. Diagnostics only: no
+    // lookup here constructs, substitutes, or caches geometry.
+    const char *label_for(PrototileId p_id) const;
+
     // Place every distinct palette orientation into its own exact four-game-unit
     // debug cell. Returns false after reporting the first unexpected failure.
     bool place_orientation_grid();
@@ -125,6 +132,11 @@ private:
     // non-const only because CanvasItem's draw verbs are.
     void draw_selection_preview();
     void draw_active_ghost();
+
+    // The one successfully constructed canonical catalog. It is the sole source
+    // of playable prototile geometry and display names for this scene; the
+    // engine state selects from it and never receives a second copy.
+    std::optional<content::PrototileCatalog> catalog_;
 
     std::optional<engine::State> state_;
     std::optional<Selection> selection_;

@@ -1,6 +1,8 @@
 #include "register_types.h"
 
 #include "game/Editor.h"
+#include "game/resources/LevelResources.h"
+#include "game/testing/ResourceIntegrationRunner.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/defs.hpp>
@@ -10,6 +12,19 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     if (p_level != godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+
+    // Resources first, so every class a node may construct or load already
+    // exists in ClassDB. Only resource and node classes enter ClassDB: no core,
+    // content, or engine value is ever bound to Godot.
+    GDREGISTER_CLASS(tiles::game::PolygonResource);
+    GDREGISTER_CLASS(tiles::game::PaletteEntryResource);
+    GDREGISTER_CLASS(tiles::game::PaletteResource);
+    GDREGISTER_CLASS(tiles::game::RegionResource);
+    GDREGISTER_CLASS(tiles::game::LevelResource);
+
+    // Registered only because its own dedicated test scene instantiates it.
+    // Registration does not place it in the main application scene.
+    GDREGISTER_CLASS(tiles::game::ResourceIntegrationRunner);
 
     GDREGISTER_CLASS(tiles::game::Editor);
 }

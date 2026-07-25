@@ -1,5 +1,6 @@
 #include "engine/TetrominoState.h"
 
+#include "content/PrototileCatalog.h"
 #include "core/Arrangement.h"
 #include "core/Orientation.h"
 #include "core/Region.h"
@@ -15,8 +16,8 @@ namespace tiles::engine {
 
 namespace {
 
-// One game unit is Coordinate::SCALE raw units, so a tetromino cell is a
-// SCALE x SCALE square. Points are built exactly on whole game-unit coordinates.
+// One game unit is Coordinate::SCALE raw units. The debug region's corners are
+// built exactly on whole game-unit coordinates.
 Point unit_point(std::int64_t p_gx, std::int64_t p_gy) {
     return Point {
         Coordinate::from_raw(p_gx * Coordinate::SCALE),
@@ -24,34 +25,10 @@ Point unit_point(std::int64_t p_gx, std::int64_t p_gy) {
     };
 }
 
-std::vector<Point> unit_ring(
-    const std::vector<std::pair<std::int64_t, std::int64_t>> &p_cells) {
-    std::vector<Point> ring;
-    ring.reserve(p_cells.size());
-    for (const auto &cell : p_cells) {
-        ring.push_back(unit_point(cell.first, cell.second));
-    }
-    return ring;
-}
-
-struct PieceSpec final {
-    PrototileId::Value id;
-    std::vector<std::pair<std::int64_t, std::int64_t>> cells;
-};
-
-TetrominoStateError polygon_failure(PrototileId p_id, PolygonError p_error) {
+TetrominoStateError catalog_lookup_failure(PrototileId p_id) {
     TetrominoStateError error {};
-    error.stage = TetrominoStateStage::polygon;
+    error.stage = TetrominoStateStage::catalog_lookup;
     error.prototile_id = p_id;
-    error.polygon_error = p_error;
-    return error;
-}
-
-TetrominoStateError prototile_failure(PrototileId p_id, PrototileError p_error) {
-    TetrominoStateError error {};
-    error.stage = TetrominoStateStage::prototile;
-    error.prototile_id = p_id;
-    error.prototile_error = p_error;
     return error;
 }
 
@@ -85,6 +62,10 @@ TetrominoStateError region_failure(RegionError p_error) {
     return error;
 }
 
+// The canonical ids this temporary fixture selects, in the palette order the
+// construction surface has always used: o, i, t, s, z, j, l.
+constexpr PrototileId::Value BOOTSTRAP_IDS[] = { 1, 2, 3, 4, 5, 6, 7 };
+
 // The temporary debug region: one axis-aligned rectangle on exact whole
 // game-unit coordinates, with no holes. The debug arrangement occupies
 // x in [0, 28] and y in [-22, 0], and a mated tetromino reaches at most four
@@ -97,20 +78,8 @@ constexpr std::int64_t DEBUG_REGION_MAX_Y = 8;
 
 } // namespace
 
-Result<State, TetrominoStateError> make_tetromino_state() {
-    // Authored palette order o, i, t, s, z, j, l with stable ids 1..7. Each ring
-    // has only direction-changing corners and agrees with the act-2 tetromino
-    // fixtures; s and z, and j and l, are distinct chiral prototiles.
-    const std::vector<PieceSpec> specs = {
-        { 1, { { 0, 0 }, { 2, 0 }, { 2, 2 }, { 0, 2 } } },
-        { 2, { { 0, 0 }, { 4, 0 }, { 4, 1 }, { 0, 1 } } },
-        { 3, { { 0, 0 }, { 3, 0 }, { 3, 1 }, { 2, 1 }, { 2, 2 }, { 1, 2 }, { 1, 1 }, { 0, 1 } } },
-        { 4, { { 0, 0 }, { 2, 0 }, { 2, 1 }, { 3, 1 }, { 3, 2 }, { 1, 2 }, { 1, 1 }, { 0, 1 } } },
-        { 5, { { 1, 0 }, { 3, 0 }, { 3, 1 }, { 2, 1 }, { 2, 2 }, { 0, 2 }, { 0, 1 }, { 1, 1 } } },
-        { 6, { { 0, 0 }, { 2, 0 }, { 2, 3 }, { 1, 3 }, { 1, 1 }, { 0, 1 } } },
-        { 7, { { 0, 0 }, { 2, 0 }, { 2, 1 }, { 1, 1 }, { 1, 3 }, { 0, 3 } } },
-    };
-
+Result<State, TetrominoStateError> make_tetromino_state(
+    const content::PrototileCatalog &p_catalog) {
     const std::vector<Orientation> requested = {
         Orientation::reference(),
         Orientation::quarter(),
@@ -119,25 +88,20 @@ Result<State, TetrominoStateError> make_tetromino_state() {
     };
 
     std::vector<PaletteEntry> entries;
-    entries.reserve(specs.size());
+    entries.reserve(sizeof(BOOTSTRAP_IDS) / sizeof(BOOTSTRAP_IDS[0]));
 
-    for (const PieceSpec &spec : specs) {
-        const PrototileId id(spec.id);
+    for (const PrototileId::Value value : BOOTSTRAP_IDS) {
+        const PrototileId id(value);
 
-        auto polygon = Polygon::make(unit_ring(spec.cells));
-        if (!polygon) {
-            return Result<State, TetrominoStateError>::failure(
-                polygon_failure(id, polygon.error()));
-        }
-
-        auto prototile = Prototile::make(id, std::move(polygon).value());
-        if (!prototile) {
-            return Result<State, TetrominoStateError>::failure(
-                prototile_failure(id, prototile.error()));
+        // Exact lookup with no fallback: an absent id fails the bootstrap rather
+        // than substituting other geometry.
+        const content::CanonicalPrototile *canonical = p_catalog.find(id);
+        if (canonical == nullptr) {
+            return Result<State, TetrominoStateError>::failure(catalog_lookup_failure(id));
         }
 
         auto entry = PaletteEntry::make(
-            std::move(prototile).value(), Supply::unlimited(), requested);
+            canonical->prototile(), Supply::unlimited(), requested);
         if (!entry) {
             return Result<State, TetrominoStateError>::failure(
                 palette_entry_failure(id, entry.error()));
