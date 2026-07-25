@@ -33,7 +33,7 @@ jobs:
       - name: build the release gdextension
         shell: bash
         run: |
-          scons platform=windows target=template_release arch=x86_64
+          scons platform=windows target=template_release arch=x86_64 use_mingw=yes
 
       - name: install godot 4.7.1 and its export templates
         uses: chickensoft-games/setup-godot@v2
