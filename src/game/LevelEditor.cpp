@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace tiles::game {
@@ -135,12 +136,13 @@ godot::Color default_row_color(std::size_t p_index) {
         static_cast<float>(hue), DEFAULT_SATURATION, DEFAULT_VALUE, 1.0f);
 }
 
-godot::String number(std::int64_t p_value) {
-    return godot::String::num_int64(p_value);
-}
-
-godot::String number(std::uint64_t p_value) {
-    return godot::String::num_uint64(p_value);
+template <typename T>
+godot::String number(T p_value) {
+    static_assert(std::is_integral_v<T>);
+    if constexpr (std::is_signed_v<T>) {
+        return godot::String::num_int64(static_cast<std::int64_t>(p_value));
+    }
+    return godot::String::num_uint64(static_cast<std::uint64_t>(p_value));
 }
 
 bool is_supported_domain(content::GeometryDomain p_domain) {
