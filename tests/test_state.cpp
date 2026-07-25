@@ -16,6 +16,7 @@
 #include "engine/Supply.h"
 
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -24,8 +25,10 @@ using namespace tiles;
 using tiles::engine::Level;
 using tiles::engine::Palette;
 using tiles::engine::PaletteEntry;
+using tiles::engine::PaletteEntryIndex;
 using tiles::engine::State;
 using tiles::engine::Supply;
+using tiles::engine::SupplyStatus;
 using tiles_test::raw_pt;
 
 namespace {
@@ -135,6 +138,41 @@ TEST_CASE("state exposes exact core polygon vertices through read-only chains") 
     const Polygon::Vertices &outer = state.region().outer_boundary().vertices();
     CHECK(outer.size() == 4);
     CHECK(outer.front() == unit(0, 0));
+}
+
+TEST_CASE("supply status is a const observation returning a value, not a stored counter") {
+    const State state(small_level());
+
+    // Reachable through a const state, and it hands back a value rather than a
+    // reference into anything the caller could then write through.
+    static_assert(
+        std::is_same_v<
+            decltype(std::declval<const State &>().supply_status(PaletteEntryIndex(0))),
+            std::optional<SupplyStatus>>,
+        "supply_status() must return an owned optional value");
+
+    auto status = state.supply_status(PaletteEntryIndex(0));
+    CHECK(status.has_value());
+    if (status.has_value()) {
+        CHECK(status.value().used == 0);
+        // The one palette entry is unlimited, so nothing remains to report.
+        CHECK(status.value().remaining.has_value() == false);
+    }
+    // An index past the palette is the only failure a constructible state has.
+    CHECK(state.supply_status(PaletteEntryIndex(1)).has_value() == false);
+}
+
+TEST_CASE("no history lives inside a state") {
+    // Undo belongs to the session above the state, not to the exact value: a
+    // State that contained its own history would recursively contain snapshots
+    // of itself.
+    static_assert(
+        std::is_copy_constructible_v<State>,
+        "State must be copyable so a session can snapshot it by value");
+    static_assert(
+        std::is_move_assignable_v<State>,
+        "State must be move-assignable so a session can install a candidate");
+    CHECK(true);
 }
 
 TEST_CASE("state exposes no mutable level, palette, region, or arrangement reference") {

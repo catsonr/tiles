@@ -35,8 +35,10 @@ using tiles::engine::PaletteEntryIndex;
 using tiles::engine::PaletteOrientationIndex;
 using tiles::engine::PlaceCommand;
 using tiles::engine::PlaceCommandError;
+using tiles::engine::RemoveCommand;
 using tiles::engine::State;
 using tiles::engine::Supply;
+using tiles::engine::SupplyStatus;
 using tiles_test::raw_pt;
 using tiles_test::reference_orientation;
 
@@ -86,6 +88,14 @@ Region big_region() {
 
 Level level_of(Palette p_palette) {
     return Level(std::move(p_palette), big_region());
+}
+
+// A region exactly the size of one 2x2 square, so a single placement solves it
+// and a single deletion unsolves it.
+Region tight_region() {
+    auto outer = Polygon::make({ unit(0, 0), unit(2, 0), unit(2, 2), unit(0, 2) });
+    auto region = Region::make(std::move(outer).value(), {});
+    return std::move(region).value();
 }
 
 Palette square_palette(Supply p_supply) {
@@ -579,12 +589,408 @@ TEST_CASE("finite maximum uint64 supply has no counting overflow path") {
     State state = square_state(Supply::finite(UINT64_MAX).value());
     CHECK(state.palette().entries()[0].supply().finite_amount().value() == UINT64_MAX);
 
-    // Usage is counted only up to the configured amount, so a maximal capacity
-    // never approaches an addition that could leave the type.
+    // Usage is one increment per placed entry, so it is bounded by the
+    // arrangement's own size and a maximal capacity never approaches an
+    // addition or a subtraction that could leave the type.
     CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
     CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
     CHECK(bool(state.apply(place_at(0, 0, unit(4, 0)))));
     CHECK(state.arrangement().entries().size() == 3);
+}
+
+// ---------------------------------------------------------------------------
+// derived supply status
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The status of the first palette entry, which every fixture below queries.
+SupplyStatus status_of(const State &p_state, std::size_t p_entry) {
+    return p_state.supply_status(PaletteEntryIndex(p_entry)).value();
+}
+
+} // namespace
+
+TEST_CASE("an out-of-range palette entry has no supply status") {
+    State state = square_state(Supply::unlimited());
+    CHECK(state.palette().order() == 1);
+
+    CHECK(state.supply_status(PaletteEntryIndex(1)).has_value() == false);
+    CHECK(state.supply_status(PaletteEntryIndex(9999)).has_value() == false);
+    // The one entry that does exist answers.
+    CHECK(state.supply_status(PaletteEntryIndex(0)).has_value());
+}
+
+TEST_CASE("an unused finite entry reports no usage and its complete capacity") {
+    State state = square_state(Supply::finite(3).value());
+    const SupplyStatus status = status_of(state, 0);
+    CHECK(status.used == 0);
+    CHECK(status.remaining.has_value());
+    if (status.remaining.has_value()) {
+        CHECK(status.remaining.value() == 3);
+    }
+}
+
+TEST_CASE("an unlimited entry reports usage but never a remaining amount") {
+    State state = square_state(Supply::unlimited());
+    const SupplyStatus empty = status_of(state, 0);
+    CHECK(empty.used == 0);
+    // Empty means unlimited. It is not zero and not unknown.
+    CHECK(empty.remaining.has_value() == false);
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+    CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
+    const SupplyStatus used = status_of(state, 0);
+    CHECK(used.used == 2);
+    CHECK(used.remaining.has_value() == false);
+}
+
+TEST_CASE("every distinct orientation of one entry counts against the same supply") {
+    std::vector<PaletteEntry> entries;
+    entries.push_back(make_entry(bar(3), Supply::finite(4).value(), { R, Q, H, T }));
+    State state(level_of(palette_of(std::move(entries))));
+    CHECK(state.palette().entries()[0].orientations().size() == 2);
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+    CHECK(bool(state.apply(place_at(0, 1, unit(0, 4)))));
+    const SupplyStatus status = status_of(state, 0);
+    CHECK(status.used == 2);
+    CHECK(status.remaining.value() == 2);
+}
+
+TEST_CASE("placements of another prototile identity never count against an entry") {
+    std::vector<PaletteEntry> entries;
+    entries.push_back(make_entry(square(1), Supply::finite(2).value(), { R }));
+    entries.push_back(make_entry(bar(2), Supply::finite(5).value(), { R }));
+    State state(level_of(palette_of(std::move(entries))));
+
+    CHECK(bool(state.apply(place_at(1, 0, unit(0, 10)))));
+    CHECK(bool(state.apply(place_at(1, 0, unit(0, 12)))));
+    CHECK(bool(state.apply(place_at(1, 0, unit(0, 14)))));
+
+    const SupplyStatus squares = status_of(state, 0);
+    CHECK(squares.used == 0);
+    CHECK(squares.remaining.value() == 2);
+    const SupplyStatus bars = status_of(state, 1);
+    CHECK(bars.used == 3);
+    CHECK(bars.remaining.value() == 2);
+}
+
+TEST_CASE("finite remaining reaches exactly zero and that same zero exhausts the command") {
+    State state = square_state(Supply::finite(2).value());
+    CHECK(status_of(state, 0).remaining.value() == 2);
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+    CHECK(status_of(state, 0).used == 1);
+    CHECK(status_of(state, 0).remaining.value() == 1);
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
+    const SupplyStatus spent = status_of(state, 0);
+    CHECK(spent.used == 2);
+    // Zero, not empty: the entry is finite and used up.
+    CHECK(spent.remaining.has_value());
+    if (spent.remaining.has_value()) {
+        CHECK(spent.remaining.value() == 0);
+    }
+
+    // Command legality reads that very count, so it rejects exactly here.
+    auto third = state.apply(place_at(0, 0, unit(4, 0)));
+    CHECK(!third);
+    if (!third) {
+        CHECK(is_candidate(third.error(), CandidateError::supply_exhausted));
+    }
+    auto previewed = state.preview(place_at(0, 0, unit(4, 0)));
+    CHECK(!previewed);
+    if (!previewed) {
+        CHECK(is_candidate(previewed.error(), CandidateError::supply_exhausted));
+    }
+}
+
+TEST_CASE("deletion restores exactly one finite piece, with no counter to put back") {
+    State state = square_state(Supply::finite(2).value());
+    auto first = state.apply(place_at(0, 0, unit(0, 0)));
+    auto second = state.apply(place_at(0, 0, unit(2, 0)));
+    CHECK(bool(first));
+    CHECK(bool(second));
+    if (!first || !second) {
+        return;
+    }
+    CHECK(status_of(state, 0).remaining.value() == 0);
+
+    CHECK(bool(state.apply(RemoveCommand { second.value() })));
+    const SupplyStatus after = status_of(state, 0);
+    CHECK(after.used == 1);
+    CHECK(after.remaining.value() == 1);
+
+    // Exactly one, not two: the entry is available again, once.
+    CHECK(bool(state.apply(place_at(0, 0, unit(4, 0)))));
+    CHECK(status_of(state, 0).remaining.value() == 0);
+    auto spent = state.apply(place_at(0, 0, unit(6, 0)));
+    CHECK(!spent);
+    if (!spent) {
+        CHECK(is_candidate(spent.error(), CandidateError::supply_exhausted));
+    }
+}
+
+TEST_CASE("deletion changes unlimited usage while remaining stays empty") {
+    State state = square_state(Supply::unlimited());
+    auto first = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(first));
+    CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
+    if (!first) {
+        return;
+    }
+    CHECK(status_of(state, 0).used == 2);
+
+    CHECK(bool(state.apply(RemoveCommand { first.value() })));
+    const SupplyStatus after = status_of(state, 0);
+    CHECK(after.used == 1);
+    CHECK(after.remaining.has_value() == false);
+}
+
+TEST_CASE("a maximum finite capacity counts and subtracts without leaving the type") {
+    State state = square_state(Supply::finite(UINT64_MAX).value());
+    const SupplyStatus empty = status_of(state, 0);
+    CHECK(empty.used == 0);
+    CHECK(empty.remaining.value() == UINT64_MAX);
+
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+    CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
+    const SupplyStatus used = status_of(state, 0);
+    CHECK(used.used == 2);
+    CHECK(used.remaining.value() == UINT64_MAX - 2);
+    // Still available, which is what a maximal capacity should mean.
+    CHECK(bool(state.apply(place_at(0, 0, unit(4, 0)))));
+    CHECK(status_of(state, 0).remaining.value() == UINT64_MAX - 3);
+}
+
+TEST_CASE("a supply status query observes without changing anything") {
+    State state = square_state(Supply::finite(3).value());
+    CHECK(bool(state.apply(place_at(0, 0, unit(0, 0)))));
+
+    const State &observed = state;
+    const std::size_t before_size = observed.arrangement().entries().size();
+    const PlacementId before_next = observed.arrangement().next_id().value();
+
+    // Repeated queries against an unmodified state are identical, and neither
+    // consumed a piece, an id, or an entry.
+    const SupplyStatus first = observed.supply_status(PaletteEntryIndex(0)).value();
+    const SupplyStatus second = observed.supply_status(PaletteEntryIndex(0)).value();
+    CHECK(first.used == second.used);
+    CHECK(first.remaining.value() == second.remaining.value());
+    CHECK(first.used == 1);
+    CHECK(first.remaining.value() == 2);
+
+    CHECK(observed.arrangement().entries().size() == before_size);
+    CHECK(observed.arrangement().next_id().value() == before_next);
+    CHECK(observed.palette().order() == 1);
+}
+
+// ---------------------------------------------------------------------------
+// exact deletion
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a remove command deletes exactly the one placement it names") {
+    State state = square_state(Supply::unlimited());
+    auto first = state.apply(place_at(0, 0, unit(0, 0)));
+    auto second = state.apply(place_at(0, 0, unit(2, 0)));
+    auto third = state.apply(place_at(0, 0, unit(4, 0)));
+    CHECK(bool(first));
+    CHECK(bool(second));
+    CHECK(bool(third));
+    if (!first || !second || !third) {
+        return;
+    }
+
+    auto removed = state.apply(RemoveCommand { second.value() });
+    CHECK(bool(removed));
+    if (removed) {
+        CHECK(removed.value() == second.value());
+    }
+
+    CHECK(state.arrangement().entries().size() == 2);
+    CHECK(state.arrangement().entries()[0].id == first.value());
+    CHECK(state.arrangement().entries()[1].id == third.value());
+    CHECK(state.arrangement().entries()[0].placement.translation() == unit(0, 0));
+    CHECK(state.arrangement().entries()[1].placement.translation() == unit(4, 0));
+    // Deletion allocates nothing, so the allocator is exactly where it was.
+    CHECK(state.arrangement().next_id().value() == PlacementId(3));
+}
+
+TEST_CASE("removing a missing id is typed and leaves the state completely unchanged") {
+    State state = square_state(Supply::finite(4).value());
+    auto first = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(first));
+    CHECK(bool(state.apply(place_at(0, 0, unit(2, 0)))));
+    if (!first) {
+        return;
+    }
+
+    // Delete once, then name the same id again: gone is gone.
+    CHECK(bool(state.apply(RemoveCommand { first.value() })));
+
+    const std::size_t before_size = state.arrangement().entries().size();
+    const PlacementId before_next = state.arrangement().next_id().value();
+    const SupplyStatus before_supply = status_of(state, 0);
+
+    auto again = state.apply(RemoveCommand { first.value() });
+    CHECK(!again);
+    if (!again) {
+        CHECK(again.error() == RemovalError::placement_not_found);
+    }
+    auto never = state.apply(RemoveCommand { PlacementId(9999) });
+    CHECK(!never);
+    if (!never) {
+        CHECK(never.error() == RemovalError::placement_not_found);
+    }
+
+    CHECK(state.arrangement().entries().size() == before_size);
+    CHECK(state.arrangement().next_id().value() == before_next);
+    CHECK(status_of(state, 0).used == before_supply.used);
+    CHECK(status_of(state, 0).remaining.value() == before_supply.remaining.value());
+}
+
+TEST_CASE("deletion leaves the level, palette, region, and other placements untouched") {
+    std::vector<PaletteEntry> entries;
+    entries.push_back(make_entry(square(1), Supply::finite(3).value(), { R }));
+    entries.push_back(make_entry(bar(2), Supply::unlimited(), { R }));
+    State state(level_of(palette_of(std::move(entries))));
+
+    auto target = state.apply(place_at(0, 0, unit(0, 0)));
+    auto survivor = state.apply(place_at(1, 0, unit(0, 10)));
+    CHECK(bool(target));
+    CHECK(bool(survivor));
+    if (!target || !survivor) {
+        return;
+    }
+    const Polygon::Vertices before_footprint =
+        state.arrangement().entries()[1].placement.footprint().vertices();
+
+    CHECK(bool(state.apply(RemoveCommand { target.value() })));
+
+    // The level's own values are not arrangement state and cannot be deleted.
+    CHECK(state.palette().order() == 2);
+    CHECK(state.palette().entries()[0].prototile().id() == PrototileId(1));
+    CHECK(state.palette().entries()[1].prototile().id() == PrototileId(2));
+    CHECK(state.palette().entries()[0].supply() == Supply::finite(3).value());
+    CHECK(state.region().outer_boundary().vertices().front() == unit(-32, -32));
+    CHECK(state.region().inner_boundaries().empty());
+
+    // The surviving placement keeps its identity and its exact geometry.
+    CHECK(state.arrangement().entries().size() == 1);
+    CHECK(state.arrangement().entries()[0].id == survivor.value());
+    CHECK(state.arrangement().entries()[0].placement.prototile().id() == PrototileId(2));
+    CHECK(state.arrangement().entries()[0].placement.footprint().vertices()
+        == before_footprint);
+}
+
+TEST_CASE("deleting any storage position preserves the survivors' order") {
+    for (std::size_t removed_index = 0; removed_index < 3; ++removed_index) {
+        State state = square_state(Supply::unlimited());
+        std::vector<PlacementId> placed;
+        for (std::int64_t i = 0; i < 3; ++i) {
+            auto applied = state.apply(place_at(0, 0, unit(2 * i, 0)));
+            CHECK(bool(applied));
+            if (applied) {
+                placed.push_back(applied.value());
+            }
+        }
+        if (placed.size() != 3) {
+            continue;
+        }
+
+        CHECK(bool(state.apply(RemoveCommand { placed[removed_index] })));
+        CHECK(state.arrangement().entries().size() == 2);
+
+        std::size_t position = 0;
+        for (std::size_t i = 0; i < 3; ++i) {
+            if (i == removed_index) {
+                continue;
+            }
+            CHECK(state.arrangement().entries()[position].id == placed[i]);
+            CHECK(state.arrangement().entries()[position].placement.translation()
+                == unit(2 * static_cast<std::int64_t>(i), 0));
+            ++position;
+        }
+    }
+}
+
+TEST_CASE("a deleted placement is no longer an anchor, while survivors still are") {
+    State state = square_state(Supply::unlimited());
+    auto anchor = state.apply(place_at(0, 0, unit(0, 0)));
+    auto doomed = state.apply(place_at(0, 0, unit(8, 0)));
+    CHECK(bool(anchor));
+    CHECK(bool(doomed));
+    if (!anchor || !doomed) {
+        return;
+    }
+
+    CHECK(bool(state.apply(RemoveCommand { doomed.value() })));
+
+    // The deleted identity is simply absent; it reports the completed
+    // anchor_not_found rather than any deletion-specific error.
+    auto orphaned_edges = state.apply(MateFullEdgesCommand {
+        doomed.value(),
+        EdgeIndex(0),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(2),
+    });
+    CHECK(!orphaned_edges);
+    if (!orphaned_edges) {
+        const JoinError *error = std::get_if<JoinError>(&orphaned_edges.error());
+        CHECK(error != nullptr && error->code == JoinErrorCode::anchor_not_found);
+    }
+
+    auto orphaned_vertices = state.apply(MateVerticesCommand {
+        doomed.value(),
+        VertexIndex(2),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        VertexIndex(0),
+    });
+    CHECK(!orphaned_vertices);
+    if (!orphaned_vertices) {
+        const JoinError *error = std::get_if<JoinError>(&orphaned_vertices.error());
+        CHECK(error != nullptr && error->code == JoinErrorCode::anchor_not_found);
+    }
+
+    // The survivor remains a perfectly ordinary anchor, and direct placement
+    // into the vacated space still succeeds.
+    CHECK(bool(state.apply(MateFullEdgesCommand {
+        anchor.value(),
+        EdgeIndex(0),
+        PaletteEntryIndex(0),
+        PaletteOrientationIndex(0),
+        EdgeIndex(2),
+    })));
+    CHECK(bool(state.apply(place_at(0, 0, unit(8, 0)))));
+    CHECK(state.arrangement().entries().size() == 3);
+}
+
+TEST_CASE("deletion makes a solved state unsolved, with no stored completion flag") {
+    State state(Level(square_palette(Supply::unlimited()), tight_region()));
+    CHECK(state.solved() == false);
+
+    auto only = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(only));
+    if (!only) {
+        return;
+    }
+    CHECK(state.solved());
+
+    // Completion is derived from covered area alone, so removing any
+    // positive-area placement necessarily unsolves it.
+    CHECK(bool(state.apply(RemoveCommand { only.value() })));
+    CHECK(state.solved() == false);
+
+    // And placing it back solves it again, at the next fresh identity.
+    auto replaced = state.apply(place_at(0, 0, unit(0, 0)));
+    CHECK(bool(replaced));
+    if (replaced) {
+        CHECK(replaced.value() == PlacementId(1));
+    }
+    CHECK(state.solved());
 }
 
 // ---------------------------------------------------------------------------

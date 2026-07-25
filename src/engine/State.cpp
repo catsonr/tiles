@@ -20,27 +20,44 @@ namespace {
 // afresh. Identity is the exact PrototileId — not geometry comparison, pointer
 // identity, storage order, orientation, or which command added a placement.
 //
-// Counting stops at the configured amount, so the running count never exceeds a
-// value the capacity itself holds and no remaining count is derived by
-// subtraction. A finite UINT64_MAX capacity therefore has no overflow path.
-bool supply_available(
-    const Arrangement &p_arrangement, PrototileId p_id, Supply p_supply) {
-    const std::optional<Supply::Amount> capacity = p_supply.finite_amount();
-    if (!capacity.has_value()) {
-        return true;
-    }
-
+// The count is one entry per matching placement, so it is bounded by the
+// arrangement's own size and cannot leave the type. A finite UINT64_MAX
+// capacity therefore has no overflow path.
+Supply::Amount supply_used(const Arrangement &p_arrangement, PrototileId p_id) {
     Supply::Amount used = 0;
     for (const Entry &entry : p_arrangement.entries()) {
-        if (entry.placement.prototile().id() != p_id) {
-            continue;
-        }
-        ++used;
-        if (used == capacity.value()) {
-            return false;
+        if (entry.placement.prototile().id() == p_id) {
+            ++used;
         }
     }
-    return true;
+    return used;
+}
+
+// The one derivation both command legality and the palette view read. Keeping
+// them on one count is what makes deletion restore availability immediately:
+// there is no counter to put back.
+SupplyStatus supply_status_of(
+    const Arrangement &p_arrangement, PrototileId p_id, Supply p_supply) {
+    const Supply::Amount used = supply_used(p_arrangement, p_id);
+
+    const std::optional<Supply::Amount> capacity = p_supply.finite_amount();
+    if (!capacity.has_value()) {
+        return SupplyStatus { used, std::nullopt };
+    }
+
+    // Every insertion of this id proved capacity beforehand and nothing else can
+    // add an entry, so usage never exceeds the configured amount and the
+    // subtraction cannot wrap.
+    assert(used <= capacity.value());
+    return SupplyStatus { used, capacity.value() - used };
+}
+
+// A finite entry is available exactly when its derived remaining amount is
+// nonzero; an unlimited one always is.
+bool supply_available(
+    const Arrangement &p_arrangement, PrototileId p_id, Supply p_supply) {
+    const SupplyStatus status = supply_status_of(p_arrangement, p_id, p_supply);
+    return !status.remaining.has_value() || status.remaining.value() != 0;
 }
 
 // The impossible immediate insertion failure, mapped back into the complete
@@ -248,6 +265,23 @@ Result<PlacementId, MateCommandError> State::apply(const MateVerticesCommand &p_
     }
 
     return Applied::success(inserted.value());
+}
+
+Result<PlacementId, RemoveCommandError> State::apply(const RemoveCommand &p_command) {
+    // Nothing to resolve, prove, or allocate: identity is the whole command, and
+    // the arrangement owns the only fact that can reject it. solved() and every
+    // supply status are derived, so removing an entry updates both without this
+    // touching either.
+    return arrangement_.try_remove(p_command.placement);
+}
+
+std::optional<SupplyStatus> State::supply_status(PaletteEntryIndex p_entry) const {
+    const std::vector<PaletteEntry> &entries = palette().entries();
+    if (p_entry.value() >= entries.size()) {
+        return std::nullopt;
+    }
+    const PaletteEntry &entry = entries[p_entry.value()];
+    return supply_status_of(arrangement_, entry.prototile().id(), entry.supply());
 }
 
 bool State::solved() const {

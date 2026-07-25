@@ -227,6 +227,26 @@ Result<PlacementId, JoinError> Arrangement::try_join_vertices(
     return Result<PlacementId, JoinError>::success(inserted.value());
 }
 
+Result<PlacementId, RemovalError> Arrangement::try_remove(PlacementId p_placement) {
+    // Storage order, exact identity. Nothing is matched by index, geometry,
+    // prototile, orientation, translation, or pointer, so no two distinct
+    // entries can ever be confused for one another.
+    for (std::vector<Entry>::const_iterator it = entries_.begin(); it != entries_.end(); ++it) {
+        if (it->id != p_placement) {
+            continue;
+        }
+        // Erasing one element shifts the tail down without reordering it, so
+        // every survivor keeps its identity, its placement, and its position
+        // relative to the others. next_id_ and exhausted_ are deliberately not
+        // touched: the allocator only ever moves forward.
+        entries_.erase(it);
+        return Result<PlacementId, RemovalError>::success(p_placement);
+    }
+
+    // No entry matched, so the loop above mutated nothing.
+    return Result<PlacementId, RemovalError>::failure(RemovalError::placement_not_found);
+}
+
 Arrangement Arrangement::testing_with_next_id(std::uint64_t p_next_id) {
     Arrangement arrangement;
     arrangement.next_id_ = p_next_id;

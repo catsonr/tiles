@@ -79,6 +79,13 @@ struct JoinError final {
     std::optional<PlacementId> conflicting_placement;
 };
 
+// The one way removal fails: no stored entry carries the named identity. There
+// is deliberately no second alternative — removal proves nothing geometric, so
+// nothing else about the arrangement can reject it.
+enum class RemovalError {
+    placement_not_found,
+};
+
 // A finite collection of placements whose footprint interiors are pairwise
 // disjoint. The invariant holds by construction: the only ways to add a
 // placement are tryInsert and tryJoin, both of which reject any candidate whose
@@ -156,6 +163,22 @@ public:
         VertexIndex p_anchor_vertex,
         const OrientedPrototile &p_candidate,
         VertexIndex p_candidate_vertex);
+
+    // Remove the one stored entry carrying p_placement, naming it by its stable
+    // identity alone. On success the same id is returned and every surviving
+    // entry keeps its identity, its placement, and its relative storage order.
+    // On failure nothing is touched at all.
+    //
+    // Removal cannot break the arrangement invariant: a subset of a pairwise
+    // interior-disjoint collection is still pairwise interior-disjoint. It may
+    // leave the coverage disconnected or drop a placement some later command
+    // names as an anchor; both are legal consequences, not errors here.
+    //
+    // The id allocator is untouched in either case. Identities are never reused
+    // merely because an entry was deleted — given 0, 1, 2, removing 1 and
+    // inserting again yields 3 — and an exhausted arrangement stays exhausted,
+    // because deletion frees space, not another representable identity.
+    Result<PlacementId, RemovalError> try_remove(PlacementId p_placement);
 
     // Test-only construction seam: an empty arrangement whose id allocator
     // starts at p_next_id. It cannot produce an invalid arrangement (an empty

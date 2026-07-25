@@ -8,10 +8,25 @@
 #include "engine/Commands.h"
 #include "engine/Level.h"
 #include "engine/Palette.h"
+#include "engine/Supply.h"
 
 #include <cstdint>
+#include <optional>
 
 namespace tiles::engine {
+
+// What one palette entry's configured supply currently amounts to, derived
+// wholly from the arrangement. Neither field is stored, incremented,
+// decremented, serialized, or undone: both are recomputed from arrangement
+// contents on every query, so they cannot drift out of agreement with what is
+// actually placed.
+//
+// An empty `remaining` means unlimited. It never means unknown and never means
+// zero — a used-up finite entry reports `remaining == 0`.
+struct SupplyStatus final {
+    Supply::Amount used;
+    std::optional<Supply::Amount> remaining;
+};
 
 // The single state-owning engine aggregate: one level together with one
 // authoritative arrangement. It owns both values and never reconstructs,
@@ -74,6 +89,29 @@ public:
 
     // Mate a selected anchor footprint vertex with a selected candidate vertex.
     Result<PlacementId, MateCommandError> apply(const MateVerticesCommand &p_command);
+
+    // Remove the placement the command names, by identity alone.
+    //
+    // Deletion performs no palette lookup, orientation lookup, supply check,
+    // region test, overlap test, completion special case, or id allocation:
+    // every one of those facts is either irrelevant to removal or derived
+    // afresh once the arrangement has changed. It delegates straight to the
+    // core and preserves the core's typed failure unchanged.
+    Result<PlacementId, RemoveCommandError> apply(const RemoveCommand &p_command);
+
+    // What one palette entry's supply currently amounts to, or nothing at all
+    // when the entry index is out of range. No other failure is reachable for a
+    // constructible state.
+    //
+    // Usage is the number of arrangement entries whose exact PrototileId equals
+    // the entry's. Geometry equality, pointer identity, palette index
+    // coincidence, and orientation are all irrelevant: every orientation of one
+    // prototile draws on the same configured capacity.
+    //
+    // This is the same count command legality applies, not a second one kept in
+    // agreement with it — a finite candidate is available exactly when its
+    // remaining amount is nonzero.
+    std::optional<SupplyStatus> supply_status(PaletteEntryIndex p_entry) const;
 
     // Derive the exact placement the corresponding apply would insert, without
     // mutating anything. Candidate resolution, region containment, insertion

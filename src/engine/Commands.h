@@ -104,6 +104,20 @@ struct MateVerticesCommand final {
     VertexIndex candidate_vertex;
 };
 
+// Remove one placement, naming it by its stable identity.
+//
+// This is an exact mutation over the arrangement alone. Nothing about the
+// palette, an orientation, a supply, the region, or an overlap can make a
+// deletion legal or illegal, and no identity is allocated, so the command
+// carries no candidate, no geometry, and no anchor.
+struct RemoveCommand final {
+    PlacementId placement;
+};
+
+// Removal publishes the core's failure unchanged. It has exactly one
+// alternative, so there is nothing here to wrap in a variant.
+using RemoveCommandError = RemovalError;
+
 // Failures owned by the engine rather than the exact core: naming a candidate
 // that the palette does not offer, or one whose configured supply is already
 // used up. Candidate resolution has one precedence for every command — entry,
