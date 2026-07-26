@@ -1,17 +1,34 @@
-level notes: 
+change glider triangle color to not grey
+also some levels have a larger order pallete than needed.
 
-some levels it seems you cant place the initial tile(!!):
-- dude broken
-- galaxy broken
-- goul broken
-- raine flower broken
-- slurm broken
+LEVEL ORDER, FROM EASY -> HARD:
 
+"easy"
+act0-level
+raine_flower
+horse
+izjl
+small
+raine_candy_bug
+ring
+zooble
+goul
+glider
+bird
+spore
 
-also, zooble gets broken after placing the two 1x1 and next two 3x3s
-im sure this is because i did a weird construction in the editor for
-offsets
+"medium"
+pythag
+snake_tri_hex
+guy_f
+dude
+galaxy
+fan
+zig
+bug
+slurm
 
-also also, change glider triangle color
-
-also also also, some levels have a larger order pallete than needed.
+"hard"
+spider - inifite
+message - inifite
+perkins
