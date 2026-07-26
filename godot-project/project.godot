@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="tiles"
-run/main_scene="res://level_player.tscn"
+run/main_scene="uid://cspicvr8gwltr"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -19,6 +19,10 @@ config/icon="res://icon.svg"
 
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[gui]
+
+theme/custom_font="res://fonts/JetBrainsMono-Regular.ttf"
 
 [physics]
 

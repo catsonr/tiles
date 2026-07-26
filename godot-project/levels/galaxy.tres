@@ -1,0 +1,294 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7al0o"]
+prototile_id = 15
+translation_x_raw = 1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_jc1tk"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 1125899906842624
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_jciin"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 1688849860263936
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_pwdn1"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 1970324836974592
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_s5882"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 2251799813685248
+translation_y_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_syt08"]
+prototile_id = 15
+translation_x_raw = 844424930131968
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_8lmcc"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 2251799813685248
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_jxtyo"]
+prototile_id = 15
+translation_x_raw = 844424930131968
+translation_y_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_2txs5"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 1407374883553280
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_cbd43"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 1407374883553280
+translation_y_raw = 1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_62mpc"]
+prototile_id = 15
+translation_x_raw = 2533274790395904
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_3nthh"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 562949953421312
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_5di0u"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_o6lpo"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_y_raw = -844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_wgwqj"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 2814749767106560
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_olwyp"]
+prototile_id = 15
+translation_x_raw = 281474976710656
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ohune"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 3377699720527872
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_iusi1"]
+prototile_id = 15
+translation_x_raw = 3659174697238528
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_eikbx"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 1970324836974592
+translation_y_raw = 1407374883553280
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_s5rjn"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 1125899906842624
+translation_y_raw = 1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7b2bn"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 844424930131968
+translation_y_raw = -1407374883553280
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_iut2r"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 1688849860263936
+translation_y_raw = -1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_uxf62"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 2533274790395904
+translation_y_raw = -1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_t12no"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 3096224743817216
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_xrqi0"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 281474976710656
+translation_y_raw = 1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_n3wlm"]
+prototile_id = 15
+translation_x_raw = -281474976710656
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_suue7"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = -562949953421312
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_4ms4c"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = -844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_bk3jy"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 2814749767106560
+translation_y_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_x5s7a"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 3377699720527872
+translation_y_raw = -1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_x8qr7"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 4222124650659840
+translation_y_raw = -1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ry0yd"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 4785074604081152
+translation_y_raw = -1407374883553280
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_dqfwe"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 5348024557502464
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_g8b4n"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 5910974510923776
+translation_y_raw = -844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_8jwm4"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = -562949953421312
+translation_y_raw = 1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_0as1s"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = -1407374883553280
+translation_y_raw = 1688849860263936
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_doh2d"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = -1970324836974592
+translation_y_raw = 1407374883553280
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_g66uc"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 2814749767106560
+translation_y_raw = 1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_vgtvh"]
+prototile_id = 15
+translation_x_raw = 3659174697238528
+translation_y_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ysfqm"]
+prototile_id = 15
+translation_x_raw = 4222124650659840
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_sgqki"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 3940649673949184
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_mjpgb"]
+prototile_id = 15
+translation_x_raw = 4503599627370496
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_6xj0n"]
+prototile_id = 15
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = 3940649673949184
+translation_y_raw = -844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_0xqna"]
+prototile_id = 15
+translation_x_raw = -2251799813685248
+translation_y_raw = 562949953421312
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_cufjm"]
+prototile_id = 15
+color = Color(0.56526107, 0.95, 0.3325, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_2o2si"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_cufjm")])
+
+[resource]
+palette = SubResource("PaletteResource_2o2si")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_7al0o"), SubResource("BlueprintPlacementResource_jc1tk"), SubResource("BlueprintPlacementResource_jciin"), SubResource("BlueprintPlacementResource_pwdn1"), SubResource("BlueprintPlacementResource_s5882"), SubResource("BlueprintPlacementResource_syt08"), SubResource("BlueprintPlacementResource_8lmcc"), SubResource("BlueprintPlacementResource_jxtyo"), SubResource("BlueprintPlacementResource_2txs5"), SubResource("BlueprintPlacementResource_cbd43"), SubResource("BlueprintPlacementResource_62mpc"), SubResource("BlueprintPlacementResource_3nthh"), SubResource("BlueprintPlacementResource_5di0u"), SubResource("BlueprintPlacementResource_o6lpo"), SubResource("BlueprintPlacementResource_wgwqj"), SubResource("BlueprintPlacementResource_olwyp"), SubResource("BlueprintPlacementResource_ohune"), SubResource("BlueprintPlacementResource_iusi1"), SubResource("BlueprintPlacementResource_eikbx"), SubResource("BlueprintPlacementResource_s5rjn"), SubResource("BlueprintPlacementResource_7b2bn"), SubResource("BlueprintPlacementResource_iut2r"), SubResource("BlueprintPlacementResource_uxf62"), SubResource("BlueprintPlacementResource_t12no"), SubResource("BlueprintPlacementResource_xrqi0"), SubResource("BlueprintPlacementResource_n3wlm"), SubResource("BlueprintPlacementResource_suue7"), SubResource("BlueprintPlacementResource_4ms4c"), SubResource("BlueprintPlacementResource_bk3jy"), SubResource("BlueprintPlacementResource_x5s7a"), SubResource("BlueprintPlacementResource_x8qr7"), SubResource("BlueprintPlacementResource_ry0yd"), SubResource("BlueprintPlacementResource_dqfwe"), SubResource("BlueprintPlacementResource_g8b4n"), SubResource("BlueprintPlacementResource_8jwm4"), SubResource("BlueprintPlacementResource_0as1s"), SubResource("BlueprintPlacementResource_doh2d"), SubResource("BlueprintPlacementResource_g66uc"), SubResource("BlueprintPlacementResource_vgtvh"), SubResource("BlueprintPlacementResource_ysfqm"), SubResource("BlueprintPlacementResource_sgqki"), SubResource("BlueprintPlacementResource_mjpgb"), SubResource("BlueprintPlacementResource_6xj0n"), SubResource("BlueprintPlacementResource_0xqna")])

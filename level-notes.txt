@@ -1,0 +1,13 @@
+level notes: 
+
+some levels it seems you cant place the initial tile(!!):
+- dude broken
+- galaxy broken
+- goul broken
+- raine flower broken
+- slurm broken
+
+
+also, zooble gets broken after placing the two 1x1 and next two 3x3s
+im sure this is because i did a weird construction in the editor for
+offsets

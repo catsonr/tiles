@@ -1,0 +1,100 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_hu2vc"]
+prototile_id = 37
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7ewxb"]
+prototile_id = 37
+translation_x_raw = -909741425788106
+translation_y_raw = -525239457071717
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_8q56q"]
+prototile_id = 36
+orientation_step = 1
+orientation_order = 12
+translation_x_raw = -243764480361061
+translation_y_raw = -1191216402498762
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_4isw8"]
+prototile_id = 27
+orientation_step = 1
+orientation_order = 6
+translation_y_raw = -769003937432778
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_sanr8"]
+prototile_id = 27
+translation_x_raw = 384501968716389
+translation_y_raw = -665976945427045
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_y5a0c"]
+prototile_id = 35
+translation_x_raw = 243764480361061
+translation_y_raw = -909741425788106
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_eoo2e"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 6
+translation_x_raw = 384501968716389
+translation_y_raw = -665976945427045
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_yfvt6"]
+prototile_id = 36
+orientation_step = 1
+orientation_order = 12
+translation_x_raw = 665976945427045
+translation_y_raw = -665976945427045
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_iw7gh"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = -243764480361061
+translation_y_raw = 140737488355328
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_f6vyy"]
+prototile_id = 27
+orientation_step = 1
+orientation_order = 12
+translation_x_raw = -384501968716389
+translation_y_raw = 384501968716389
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_4udbq"]
+prototile_id = 35
+translation_x_raw = -525239457071717
+translation_y_raw = 140737488355328
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_yuii6"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 6
+translation_x_raw = -140737488355328
+translation_y_raw = 525239457071717
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_12b10"]
+prototile_id = 35
+supply = 5
+color = Color(0.2145639, 0.26248625, 0.37812495, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_rd8jg"]
+prototile_id = 27
+supply = 3
+color = Color(0.627451, 0.6039216, 0.9490196, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_b3exs"]
+prototile_id = 36
+supply = 2
+color = Color(0.95, 0.3325, 0.8730522, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_lnve4"]
+prototile_id = 37
+supply = 2
+color = Color(0.3325, 0.95, 0.8467637, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_mgv2c"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_12b10"), SubResource("PaletteEntryResource_rd8jg"), SubResource("PaletteEntryResource_b3exs"), SubResource("PaletteEntryResource_lnve4")])
+
+[resource]
+geometry_domain = 1
+palette = SubResource("PaletteResource_mgv2c")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_hu2vc"), SubResource("BlueprintPlacementResource_7ewxb"), SubResource("BlueprintPlacementResource_8q56q"), SubResource("BlueprintPlacementResource_4isw8"), SubResource("BlueprintPlacementResource_sanr8"), SubResource("BlueprintPlacementResource_y5a0c"), SubResource("BlueprintPlacementResource_eoo2e"), SubResource("BlueprintPlacementResource_yfvt6"), SubResource("BlueprintPlacementResource_iw7gh"), SubResource("BlueprintPlacementResource_f6vyy"), SubResource("BlueprintPlacementResource_4udbq"), SubResource("BlueprintPlacementResource_yuii6")])

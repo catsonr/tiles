@@ -2,6 +2,7 @@
 
 #include "core/geometry/Coordinate.h"
 #include "game/LevelPlayer.h"
+#include "game/PrototilePreview.h"
 
 #include <godot_cpp/classes/packed_scene.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -83,6 +84,20 @@ void LevelPlayerIntegrationRunner::_ready() {
             expect(player->selection().has_value() && player->selection()->entry == 0
                        && player->selection()->orientation == 0,
                 "the first entry and orientation are selected");
+            const PrototilePreview *first_preview = player->entry_preview(0);
+            const PrototilePreview *second_preview = player->entry_preview(1);
+            expect(first_preview != nullptr && second_preview != nullptr,
+                "every palette entry is represented by a tile preview");
+            if (first_preview != nullptr && second_preview != nullptr) {
+                expect(first_preview->fill_color() == player->entry_color(0).value()
+                           && second_preview->fill_color() == player->entry_color(1).value(),
+                    "palette previews use the same authored colors as placed tiles");
+                expect(first_preview->get_focus_mode() == godot::Control::FOCUS_NONE
+                           && second_preview->get_focus_mode() == godot::Control::FOCUS_NONE,
+                    "tile previews cannot receive keyboard focus");
+            }
+            expect(!player->entry_supply_visible(0) && !player->entry_supply_visible(1),
+                "unlimited palette entries show no supply text");
             expect(player->proposals().size() == 1
                        && player->proposals().front().placement.translation()
                            == Point { Coordinate::from_raw(0), Coordinate::from_raw(0) },

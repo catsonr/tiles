@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
+#include <godot_cpp/classes/rich_text_label.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/rect2.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -62,14 +63,14 @@ public:
     bool remove_at_local(godot::Vector2 p_local);
     bool undo();
     void set_pointer(godot::Vector2 p_local);
-    void on_entry_pressed(std::int64_t p_entry);
-
     bool initialized() const;
     const engine::Session *session() const;
     std::optional<Selection> selection() const;
     const std::vector<Proposal> &proposals() const;
     std::optional<std::size_t> active_proposal() const;
     std::optional<godot::Color> entry_color(std::size_t p_entry) const;
+    const PrototilePreview *entry_preview(std::size_t p_entry) const;
+    bool entry_supply_visible(std::size_t p_entry) const;
     bool completion_visible() const;
     godot::Vector2 project(Point p_point) const;
     godot::Rect2 canvas_rect() const;
@@ -109,7 +110,7 @@ private:
     godot::Vector2 projection_origin_;
     double pixels_per_unit_ = 1.0;
     godot::Label *status_label_ = nullptr;
-    godot::Label *completion_label_ = nullptr;
+    godot::RichTextLabel *completion_label_ = nullptr;
     godot::Control *palette_rows_ = nullptr;
     std::vector<EntryControl> entry_controls_;
 };

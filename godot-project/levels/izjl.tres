@@ -1,0 +1,47 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_xdjx2"]
+prototile_id = 2
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_kdopv"]
+prototile_id = 7
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_tyijt"]
+prototile_id = 5
+translation_x_raw = 281474976710656
+translation_y_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_6dyrx"]
+prototile_id = 6
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 281474976710656
+translation_y_raw = 844424930131968
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_63qdm"]
+prototile_id = 2
+supply = 1
+color = Color(0.6928682, 0.95, 0.3325, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_swkux"]
+prototile_id = 5
+supply = 1
+color = Color(0.95, 0.6665796, 0.3325, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_f68mu"]
+prototile_id = 6
+supply = 1
+color = Color(0.48639566, 0.3325, 0.95, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_mvvye"]
+prototile_id = 7
+supply = 1
+color = Color(0.35878852, 0.95, 0.3325, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_i633d"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_63qdm"), SubResource("PaletteEntryResource_swkux"), SubResource("PaletteEntryResource_f68mu"), SubResource("PaletteEntryResource_mvvye")])
+
+[resource]
+palette = SubResource("PaletteResource_i633d")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_xdjx2"), SubResource("BlueprintPlacementResource_kdopv"), SubResource("BlueprintPlacementResource_tyijt"), SubResource("BlueprintPlacementResource_6dyrx")])

@@ -3,6 +3,7 @@
 #include "core/geometry/Polygon.h"
 
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/variant/color.hpp>
 
 #include <optional>
 
@@ -30,14 +31,17 @@ public:
 
     void set_polygon(const Polygon &p_polygon);
     void clear_polygon();
+    void set_fill_color(godot::Color p_color);
 
     // The exact polygon this preview was given, or nullptr when it has none.
     // Read-only, and used by the headless runner to prove that two rows really
     // did receive geometrically different shapes.
     const Polygon *polygon() const;
+    godot::Color fill_color() const;
 
 private:
     std::optional<Polygon> polygon_;
+    godot::Color fill_color_;
 };
 
 } // namespace tiles::game

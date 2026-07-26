@@ -1,15 +1,15 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cspicvr8gwltr"]
 
-[node name="LevelPlayer" type="LevelPlayer"]
+[node name="LevelPlayer" type="LevelPlayer" unique_id=1999715752]
+level_path = "res://levels/zooble.tres"
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 focus_mode = 2
-level_path = "res://levels/act0-level.tres"
 
-[node name="Palette" type="ColorRect" parent="."]
+[node name="Palette" type="ColorRect" parent="." unique_id=840835265]
 layout_mode = 1
 anchors_preset = 9
 anchor_bottom = 1.0
@@ -18,7 +18,7 @@ offset_bottom = -44.0
 grow_vertical = 2
 color = Color(0.18, 0.19, 0.23, 1)
 
-[node name="Margin" type="MarginContainer" parent="Palette"]
+[node name="Margin" type="MarginContainer" parent="Palette" unique_id=70252409]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -30,11 +30,11 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="Rows" type="VBoxContainer" parent="Palette/Margin"]
+[node name="Rows" type="VBoxContainer" parent="Palette/Margin" unique_id=921610525]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Status" type="Label" parent="."]
+[node name="Status" type="Label" parent="." unique_id=371806110]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -43,11 +43,12 @@ anchor_bottom = 1.0
 offset_top = -44.0
 grow_horizontal = 2
 grow_vertical = 0
+text = "tab: tile | r: rotate | click: place | right click: remove | ctrl-z: undo"
 horizontal_alignment = 1
 vertical_alignment = 1
-text = "loading level…"
 
-[node name="Complete" type="Label" parent="."]
+[node name="Complete" type="RichTextLabel" parent="." unique_id=398121058]
+visible = false
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -55,12 +56,12 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -80.0
-offset_top = -22.0
+offset_top = -40.0
 offset_right = 80.0
-offset_bottom = 22.0
+offset_bottom = 40.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 28
-text = "complete!"
+bbcode_enabled = true
+text = "[center][wave amp=8.0 freq=2.0 connected=1][rainbow freq=0.5 sat=0.8 val=1.0]complete![/rainbow][/wave][/center]"
 horizontal_alignment = 1
 vertical_alignment = 1

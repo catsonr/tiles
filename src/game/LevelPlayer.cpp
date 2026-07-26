@@ -6,8 +6,6 @@
 #include "game/PrototilePreview.h"
 #include "game/resources/LevelPersistence.h"
 
-#include <godot_cpp/classes/button.hpp>
-#include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/h_box_container.hpp>
 #include <godot_cpp/classes/input_event_key.hpp>
 #include <godot_cpp/classes/input_event_mouse_button.hpp>
@@ -94,8 +92,6 @@ void LevelPlayer::_bind_methods() {
         godot::D_METHOD("set_level_path", "path"), &LevelPlayer::set_level_path);
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_level_path"), &LevelPlayer::get_level_path);
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("on_entry_pressed", "entry"), &LevelPlayer::on_entry_pressed);
     ADD_PROPERTY(
         godot::PropertyInfo(
             godot::Variant::STRING,
@@ -116,7 +112,7 @@ godot::String LevelPlayer::get_level_path() const {
 
 void LevelPlayer::_ready() {
     status_label_ = godot::Object::cast_to<godot::Label>(get_node_or_null("Status"));
-    completion_label_ = godot::Object::cast_to<godot::Label>(get_node_or_null("Complete"));
+    completion_label_ = godot::Object::cast_to<godot::RichTextLabel>(get_node_or_null("Complete"));
     palette_rows_ = godot::Object::cast_to<godot::Control>(get_node_or_null("Palette/Margin/Rows"));
     if (status_label_ == nullptr || completion_label_ == nullptr || palette_rows_ == nullptr) {
         godot::UtilityFunctions::push_error("[tiles] level player scene is incomplete");
@@ -175,31 +171,16 @@ void LevelPlayer::build_palette_controls() {
     for (std::size_t i = 0; i < entries.size(); ++i) {
         auto *row = memnew(godot::HBoxContainer);
         auto *preview = memnew(PrototilePreview);
-        preview->set_custom_minimum_size(godot::Vector2(42.0f, 34.0f));
+        preview->set_custom_minimum_size(godot::Vector2(72.0f, 56.0f));
+        preview->set_mouse_filter(godot::Control::MOUSE_FILTER_IGNORE);
         preview->set_polygon(entries[i].orientations().front().canonical_polygon());
-        auto *button = memnew(godot::Button);
-        button->set_text(godot::String("tile ") + godot::String::num_int64(i + 1));
-        button->connect(
-            "pressed",
-            godot::Callable(this, "on_entry_pressed").bind(static_cast<std::int64_t>(i)));
+        preview->set_fill_color(colors_[i]);
         auto *supply = memnew(godot::Label);
-        auto *swatch = memnew(godot::ColorRect);
-        swatch->set_color(colors_[i]);
-        swatch->set_custom_minimum_size(godot::Vector2(18.0f, 18.0f));
         row->add_child(preview);
-        row->add_child(swatch);
-        row->add_child(button);
         row->add_child(supply);
         palette_rows_->add_child(row);
         entry_controls_.push_back(EntryControl { preview, supply });
     }
-}
-
-void LevelPlayer::on_entry_pressed(std::int64_t p_entry) {
-    if (p_entry >= 0) {
-        select_entry(static_cast<std::size_t>(p_entry));
-    }
-    grab_focus();
 }
 
 void LevelPlayer::select_entry(std::size_t p_entry) {
@@ -424,11 +405,17 @@ void LevelPlayer::refresh_controls() {
     }
     for (std::size_t i = 0; i < entry_controls_.size(); ++i) {
         const auto status = session_->state().supply_status(engine::PaletteEntryIndex(i));
-        entry_controls_[i].supply->set_text(
-            status->remaining.has_value()
-                ? godot::String::num_uint64(status->remaining.value())
-                : godot::String("unlimited"));
+        const bool finite = status->remaining.has_value();
+        entry_controls_[i].supply->set_visible(finite);
+        if (finite) {
+            entry_controls_[i].supply->set_text(
+                godot::String("× ") + godot::String::num_uint64(status->remaining.value()));
+        }
         if (entry_controls_[i].preview != nullptr) {
+            const engine::PaletteEntry &entry = session_->state().palette().entries()[i];
+            const std::size_t orientation = i == selection_->entry ? selection_->orientation : 0;
+            entry_controls_[i].preview->set_polygon(entry.orientations()[orientation].canonical_polygon());
+            entry_controls_[i].preview->set_fill_color(colors_[i]);
             entry_controls_[i].preview->set_modulate(
                 i == selection_->entry ? godot::Color(1, 1, 1, 1) : godot::Color(0.62f, 0.62f, 0.62f, 1));
         }
@@ -586,6 +573,12 @@ std::optional<LevelPlayer::Selection> LevelPlayer::selection() const { return se
 const std::vector<LevelPlayer::Proposal> &LevelPlayer::proposals() const { return proposals_; }
 std::optional<std::size_t> LevelPlayer::active_proposal() const { return active_proposal_; }
 std::optional<godot::Color> LevelPlayer::entry_color(std::size_t p_entry) const { return p_entry < colors_.size() ? std::optional<godot::Color>(colors_[p_entry]) : std::nullopt; }
+const PrototilePreview *LevelPlayer::entry_preview(std::size_t p_entry) const {
+    return p_entry < entry_controls_.size() ? entry_controls_[p_entry].preview : nullptr;
+}
+bool LevelPlayer::entry_supply_visible(std::size_t p_entry) const {
+    return p_entry < entry_controls_.size() && entry_controls_[p_entry].supply->is_visible();
+}
 bool LevelPlayer::completion_visible() const { return session_.has_value() && session_->state().solved(); }
 godot::Rect2 LevelPlayer::canvas_rect() const { return canvas_rect_; }
 
