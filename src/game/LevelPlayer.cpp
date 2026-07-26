@@ -46,6 +46,27 @@ godot::PackedVector2Array closed(godot::PackedVector2Array p_points) {
     return p_points;
 }
 
+// Whether a proposed footprint meets any placed footprint along a shared length
+// of boundary. Touching at a single point is not contact: it leaves the two
+// tiles with nothing to reason from.
+bool shares_edge_contact(const Polygon &p_candidate, const Arrangement &p_arrangement) {
+    const Polygon::Vertices &candidate = p_candidate.vertices();
+    for (const Entry &anchor : p_arrangement.entries()) {
+        const Polygon::Vertices &placed = anchor.placement.footprint().vertices();
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            for (std::size_t j = 0; j < placed.size(); ++j) {
+                if (classify_segments(
+                        candidate[i], candidate[(i + 1) % candidate.size()], placed[j],
+                        placed[(j + 1) % placed.size()])
+                    == SegmentRelation::collinear_overlap) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool contains_screen_polygon(const godot::PackedVector2Array &p_points, godot::Vector2 p_query) {
     bool inside = false;
     const std::int64_t count = p_points.size();
@@ -65,24 +86,6 @@ bool contains_screen_polygon(const godot::PackedVector2Array &p_points, godot::V
         }
     }
     return inside;
-}
-
-bool shares_edge_contact(const Polygon &p_candidate, const Arrangement &p_arrangement) {
-    const Polygon::Vertices &candidate = p_candidate.vertices();
-    for (const Entry &anchor : p_arrangement.entries()) {
-        const Polygon::Vertices &placed = anchor.placement.footprint().vertices();
-        for (std::size_t i = 0; i < candidate.size(); ++i) {
-            for (std::size_t j = 0; j < placed.size(); ++j) {
-                if (classify_segments(
-                        candidate[i], candidate[(i + 1) % candidate.size()], placed[j],
-                        placed[(j + 1) % placed.size()])
-                    == SegmentRelation::collinear_overlap) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
 }
 
 } // namespace
@@ -245,58 +248,74 @@ void LevelPlayer::rebuild_proposals() {
     if (supply.has_value() && supply->remaining.has_value() && supply->remaining.value() == 0) {
         return;
     }
-    const auto keep = [&](ProposalCommand p_command, auto p_preview) {
-        if (p_preview) {
-            proposals_.push_back(Proposal { std::move(p_command), std::move(p_preview).value() });
+    // Every candidate position is named the same way, whether the arrangement is
+    // empty or not: bring one candidate polygon vertex onto one anchor vertex.
+    // The anchors are every placed footprint vertex together with every region
+    // boundary vertex.
+    //
+    // The region is what makes this complete. It guarantees an opening move
+    // exists — a convex region corner can only be covered by a tile carrying a
+    // vertex exactly there — so nothing here needs a seed special case. It is
+    // also the only thing that can pin a placement whose contact with the
+    // arrangement is a partial edge sharing no vertex, which is a legal exact
+    // contact PlaceCommand admits and neither mating command can derive.
+    std::vector<Point> anchors;
+    for (const Entry &placed : state.arrangement().entries()) {
+        for (const Point &vertex : placed.placement.footprint().vertices()) {
+            anchors.push_back(vertex);
         }
-    };
-    if (state.arrangement().entries().empty()) {
-        const Point origin { Coordinate::from_raw(0), Coordinate::from_raw(0) };
-        engine::PlaceCommand command { entry, orientation, origin };
-        keep(command, state.preview(command));
-        update_active_proposal();
-        return;
     }
-    std::vector<Proposal> discovered;
-    const std::size_t candidate_features = candidate->canonical_polygon().vertices().size();
-    for (const Entry &anchor : state.arrangement().entries()) {
-        const std::size_t features = anchor.placement.footprint().vertices().size();
-        for (std::size_t a = 0; a < features; ++a) {
-            for (std::size_t b = 0; b < candidate_features; ++b) {
-                engine::MateFullEdgesCommand command {
-                    anchor.id, EdgeIndex(a), entry, orientation, EdgeIndex(b) };
-                auto preview = state.preview(command);
-                if (preview) {
-                    discovered.push_back(Proposal { command, std::move(preview).value() });
+    for (const Point &vertex : state.region().outer_boundary().vertices()) {
+        anchors.push_back(vertex);
+    }
+    for (const Polygon &hole : state.region().inner_boundaries()) {
+        for (const Point &vertex : hole.vertices()) {
+            anchors.push_back(vertex);
+        }
+    }
+
+    // The opening move is free, and every later move must join what is already
+    // down. This is a deliberate rule of play rather than a legality claim: the
+    // engine would admit a second disconnected island, and offering one turns a
+    // level into independent local fills. Committing to one growing frontier is
+    // where a level's difficulty lives.
+    //
+    // It defers moves, and never loses them. Every authored solution stays fully
+    // reachable from every legal opening placement, so no opening choice can
+    // strand part of a level — the cost of the rule is that a separated limb
+    // waits until the frontier arrives, not that it becomes unplayable.
+    const bool arrangement_empty = state.arrangement().entries().empty();
+    for (const Point &anchor : anchors) {
+        for (const Point &local : candidate->canonical_polygon().vertices()) {
+            // The translation is derived by exact subtraction of two already
+            // quantized points, so nothing is rounded or reconstructed here.
+            auto x = checked_subtract(anchor.x, local.x);
+            auto y = checked_subtract(anchor.y, local.y);
+            if (!x || !y) {
+                continue;
+            }
+            engine::PlaceCommand command { entry, orientation, Point { x.value(), y.value() } };
+            auto preview = state.preview(command);
+            if (!preview) {
+                continue;
+            }
+            if (!arrangement_empty
+                && !shares_edge_contact(preview.value().footprint(), state.arrangement())) {
+                continue;
+            }
+            // One selection fixes identity and orientation for this whole
+            // rebuild, so two proofs describe the same physical proposal exactly
+            // when their exact translations agree.
+            bool duplicate = false;
+            for (const Proposal &kept : proposals_) {
+                if (kept.placement.translation() == command.translation) {
+                    duplicate = true;
+                    break;
                 }
             }
-        }
-    }
-    for (const Entry &anchor : state.arrangement().entries()) {
-        const std::size_t features = anchor.placement.footprint().vertices().size();
-        for (std::size_t a = 0; a < features; ++a) {
-            for (std::size_t b = 0; b < candidate_features; ++b) {
-                engine::MateVerticesCommand command {
-                    anchor.id, VertexIndex(a), entry, orientation, VertexIndex(b) };
-                auto preview = state.preview(command);
-                if (preview) {
-                    discovered.push_back(Proposal { command, std::move(preview).value() });
-                }
+            if (!duplicate) {
+                proposals_.push_back(Proposal { command, std::move(preview).value() });
             }
-        }
-    }
-    for (Proposal &proposal : discovered) {
-        bool duplicate = false;
-        for (const Proposal &kept : proposals_) {
-            if (kept.placement.prototile().id() == proposal.placement.prototile().id()
-                && kept.placement.orientation() == proposal.placement.orientation()
-                && kept.placement.translation() == proposal.placement.translation()) {
-                duplicate = true;
-                break;
-            }
-        }
-        if (!duplicate && shares_edge_contact(proposal.placement.footprint(), state.arrangement())) {
-            proposals_.push_back(std::move(proposal));
         }
     }
     update_active_proposal();
@@ -308,22 +327,33 @@ bool LevelPlayer::update_active_proposal() {
         if (!pointer_.has_value()) {
             selected = 0;
         } else {
+            // A candidate the pointer is actually inside always outranks one that
+            // is merely near it, and centroid distance only breaks ties within a
+            // rank. Candidates spread across the region rather than stacking on
+            // one spot, so this keeps selection direct however many there are:
+            // point at where the tile should go.
+            bool best_covers = false;
             double best = 0.0;
             for (std::size_t i = 0; i < proposals_.size(); ++i) {
                 const auto &vertices = proposals_[i].placement.footprint().vertices();
+                godot::PackedVector2Array points;
                 double x = 0.0;
                 double y = 0.0;
                 for (const Point &vertex : vertices) {
                     const godot::Vector2 point = project(vertex);
+                    points.push_back(point);
                     x += point.x;
                     y += point.y;
                 }
+                const bool covers = contains_screen_polygon(points, pointer_.value());
                 const double dx = x / vertices.size() - pointer_->x;
                 const double dy = y / vertices.size() - pointer_->y;
                 const double distance = dx * dx + dy * dy;
-                if (!selected.has_value() || distance < best) {
+                if (!selected.has_value() || (covers && !best_covers)
+                    || (covers == best_covers && distance < best)) {
                     selected = i;
                     best = distance;
+                    best_covers = covers;
                 }
             }
         }

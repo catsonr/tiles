@@ -19,6 +19,11 @@ const char *PLAYER_SCENE = "res://level_player.tscn";
 const char *ACT_LEVEL = "res://levels/act0-level.tres";
 const char *CANONICAL_LEVEL = "res://tests/fixtures/canonical_level.tres";
 
+// An authored level which covers no part of the world origin. Absolute
+// blueprint position carries no meaning while authoring, so this is ordinary
+// content, not a malformed artifact.
+const char *OFFSET_LEVEL = "res://levels/dude.tres";
+
 } // namespace
 
 void LevelPlayerIntegrationRunner::_bind_methods() {}
@@ -98,10 +103,18 @@ void LevelPlayerIntegrationRunner::_ready() {
             }
             expect(!player->entry_supply_visible(0) && !player->entry_supply_visible(1),
                 "unlimited palette entries show no supply text");
-            expect(player->proposals().size() == 1
-                       && player->proposals().front().placement.translation()
-                           == Point { Coordinate::from_raw(0), Coordinate::from_raw(0) },
-                "the empty state offers exactly the proven origin placement");
+            expect(!player->proposals().empty(),
+                "the empty state offers at least one proven opening placement");
+            bool distinct_openings = true;
+            for (std::size_t i = 0; i < player->proposals().size(); ++i) {
+                for (std::size_t j = i + 1; j < player->proposals().size(); ++j) {
+                    if (player->proposals()[i].placement.translation()
+                        == player->proposals()[j].placement.translation()) {
+                        distinct_openings = false;
+                    }
+                }
+            }
+            expect(distinct_openings, "opening placements are pairwise distinct");
             expect(player->accept_active_proposal(), "the ghosted command places through Session");
             expect(player->session()->state().arrangement().entries().size() == 1,
                 "placement updates the exact arrangement");
@@ -110,6 +123,20 @@ void LevelPlayerIntegrationRunner::_ready() {
                 "undo restores the empty arrangement and its supply");
         }
         player->queue_free();
+    }
+
+    // An opening move exists for every well-formed level, because a convex
+    // corner of the region can only be covered by a tile carrying a vertex
+    // exactly there. Nothing about that argument mentions the world origin.
+    LevelPlayer *offset = make_player(OFFSET_LEVEL);
+    if (offset != nullptr && offset->initialized()) {
+        expect(!offset->proposals().empty(),
+            "a level authored away from the origin still offers an opening move");
+        expect(offset->accept_active_proposal(),
+            "that opening move places through Session");
+        expect(offset->session()->state().arrangement().entries().size() == 1,
+            "the opening move reaches the exact arrangement");
+        offset->queue_free();
     }
 
     LevelPlayer *fixture = make_player(CANONICAL_LEVEL);

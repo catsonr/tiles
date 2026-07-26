@@ -79,3 +79,28 @@ test_program = test_env.Program(
 )
 
 test_env.Alias("tests", test_program)
+
+# The authored-level checker: the same dependency-free core, engine, and content
+# linked against one tool entry point, so authored content can be validated
+# without a Godot runtime. Invoke explicitly with `scons levelcheck`; it is never
+# part of the default build. See docs/TEST-LEVELS.md.
+check_env = Environment(tools=["default"])
+check_env.Append(CPPPATH=["src/"])
+check_env.Append(CXXFLAGS=["-std=c++17", "-O2"])
+
+# A distinct object suffix, for the same reason the tests use the default `.o`
+# against the shared library's `.os`: these objects are built from the same
+# sources as the test program's and must not share its target names.
+check_env["OBJSUFFIX"] = ".checko"
+
+check_sources = []
+for tree in ("src/core", "src/content", "src/engine", "tools/level_check"):
+    for root, _dirs, _files in sorted(os.walk(tree)):
+        check_sources += sorted(Glob(os.path.join(root, "*.cpp")))
+
+check_program = check_env.Program(
+    target="build/tools/level_check",
+    source=check_sources,
+)
+
+check_env.Alias("levelcheck", check_program)
