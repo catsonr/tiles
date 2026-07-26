@@ -1,0 +1,67 @@
+PALETTE NORMALIZATION (done):
+
+every level under godot-project/levels/ now has witness-exact finite supplies.
+a palette entry's supply is exactly the number of times the authored solution
+places that prototile. no level has an unlimited supply any more, and there are
+no deliberate exceptions.
+
+palette entries the solution never placed were removed:
+    goul            id 23
+    guy_f           ids 5 and 28
+    slurm           ids 1, 4, 5, and 7
+    snake_tri_hex   ids 27 and 37
+retained entries kept their order, their colors, and their ids.
+
+removing guy_f's two unused entries lowered its measured options 20 -> 15 and
+overlap 3 -> 2. nothing about its geometry changed; those maxima range over the
+palette, so they were counting positions offered for tiles the solution never
+used.
+
+the glider triangle (id 35) is now Color(1, 0.82, 0.16, 1), a bright
+yellow-orange. it was grey. no other color changed.
+
+both laws are now mechanically enforced by the checker rather than being a
+one-time cleanup -- an unused entry or a supply that disagrees with the witness
+fails `python3 tools/level_check/check_levels.py`. see docs/TEST-LEVELS.md.
+
+CANONICAL ORDER:
+
+the order below is a difficulty grouping, not the canonical exam order. the
+canonical order -- which problem is n, which is 1, and what the exam manifest
+actually contains -- still has to be chosen, and must be settled before the Exam
+is formalized. nothing in the code sorts levels today.
+
+act0-level is temporary startup content used to exercise the player. it is not a
+canonical exam problem and should not be given a problem number.
+
+LEVEL ORDER, FROM EASY -> HARD:
+
+"easy"
+act0-level
+raine_flower
+horse
+izjl
+small
+raine_candy_bug
+ring
+zooble
+goul
+glider
+bird
+spore
+
+"medium"
+pythag
+snake_tri_hex
+guy_f
+dude
+galaxy
+fan
+zig
+bug
+slurm
+
+"hard"
+spider
+message
+perkins

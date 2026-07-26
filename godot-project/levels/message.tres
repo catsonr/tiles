@@ -1,0 +1,94 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_pbfka"]
+prototile_id = 16
+orientation_step = 1
+orientation_order = 2
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_lk6xh"]
+prototile_id = 15
+translation_x_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_shxy7"]
+prototile_id = 16
+translation_x_raw = -1125899906842624
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ng2uf"]
+prototile_id = 15
+translation_x_raw = 562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_iouy2"]
+prototile_id = 16
+orientation_step = 1
+orientation_order = 2
+translation_x_raw = 1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_aapgn"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 562949953421312
+translation_y_raw = 844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_b64wl"]
+prototile_id = 16
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = -844424930131968
+translation_y_raw = 844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_wnmer"]
+prototile_id = 16
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = 562949953421312
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_s2mbp"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 2
+translation_y_raw = 844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_hy0h5"]
+prototile_id = 15
+translation_y_raw = -844424930131968
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_vkfot"]
+prototile_id = 16
+orientation_step = 3
+orientation_order = 4
+translation_x_raw = -844424930131968
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_grjtf"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = -562949953421312
+translation_y_raw = -1125899906842624
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7g7ig"]
+prototile_id = 15
+orientation_step = 1
+orientation_order = 4
+translation_x_raw = -1125899906842624
+translation_y_raw = -1407374883553280
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_3qbms"]
+prototile_id = 15
+supply = 7
+color = Color(0.56526107, 0.95, 0.3325, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_7dnx8"]
+prototile_id = 16
+supply = 6
+color = Color(0.95, 0.3325, 0.745445, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_1kp1f"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_3qbms"), SubResource("PaletteEntryResource_7dnx8")])
+
+[resource]
+palette = SubResource("PaletteResource_1kp1f")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_pbfka"), SubResource("BlueprintPlacementResource_lk6xh"), SubResource("BlueprintPlacementResource_shxy7"), SubResource("BlueprintPlacementResource_ng2uf"), SubResource("BlueprintPlacementResource_iouy2"), SubResource("BlueprintPlacementResource_aapgn"), SubResource("BlueprintPlacementResource_b64wl"), SubResource("BlueprintPlacementResource_wnmer"), SubResource("BlueprintPlacementResource_s2mbp"), SubResource("BlueprintPlacementResource_hy0h5"), SubResource("BlueprintPlacementResource_vkfot"), SubResource("BlueprintPlacementResource_grjtf"), SubResource("BlueprintPlacementResource_7g7ig")])

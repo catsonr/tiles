@@ -14,10 +14,7 @@ namespace tiles::game {
 
 namespace {
 
-// A quiet neutral fill with a clear outline: the row's own color swatch is the
-// place colour is chosen, so the shape itself stays legible against both.
-const godot::Color PREVIEW_FILL(0.82f, 0.84f, 0.88f, 1.0f);
-const godot::Color PREVIEW_OUTLINE(0.20f, 0.22f, 0.26f, 1.0f);
+const godot::Color PREVIEW_OUTLINE(0.72f, 0.75f, 0.80f, 1.0f);
 
 constexpr float PREVIEW_OUTLINE_WIDTH = 1.0f;
 constexpr double PREVIEW_MARGIN = 3.0;
@@ -40,8 +37,17 @@ void PrototilePreview::clear_polygon() {
     queue_redraw();
 }
 
+void PrototilePreview::set_fill_color(godot::Color p_color) {
+    fill_color_ = p_color;
+    queue_redraw();
+}
+
 const Polygon *PrototilePreview::polygon() const {
     return polygon_.has_value() ? &polygon_.value() : nullptr;
+}
+
+godot::Color PrototilePreview::fill_color() const {
+    return fill_color_;
 }
 
 void PrototilePreview::_draw() {
@@ -102,7 +108,7 @@ void PrototilePreview::_draw() {
         for (const Point &vertex : triangle.vertices) {
             points.push_back(project(vertex));
         }
-        draw_colored_polygon(points, PREVIEW_FILL);
+        draw_colored_polygon(points, fill_color_);
     }
 
     godot::PackedVector2Array boundary;

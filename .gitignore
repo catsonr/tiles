@@ -10,6 +10,7 @@ Godot.app/
 *.os
 *.o
 *.obj
+*.checko
 
 # compilation database
 compile_commands.json
@@ -22,3 +23,7 @@ godot-project/bin/
 
 # native core test outputs
 build/
+
+# python bytecode
+__pycache__/
+*.pyc

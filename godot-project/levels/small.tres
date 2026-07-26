@@ -1,0 +1,62 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7rjy2"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 12
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_vop7n"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 4
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_1xyvr"]
+prototile_id = 27
+translation_x_raw = 243764480361061
+translation_y_raw = -140737488355328
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_4e368"]
+prototile_id = 27
+orientation_step = 1
+orientation_order = 6
+translation_y_raw = 281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_qb1lq"]
+prototile_id = 27
+orientation_step = 1
+orientation_order = 6
+translation_x_raw = -140737488355328
+translation_y_raw = -243764480361061
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_fgecm"]
+prototile_id = 27
+translation_x_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ip2xk"]
+prototile_id = 35
+translation_x_raw = 243764480361061
+translation_y_raw = 140737488355328
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_bcbl1"]
+prototile_id = 35
+orientation_step = 1
+orientation_order = 6
+translation_x_raw = -281474976710656
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_soitw"]
+prototile_id = 35
+supply = 4
+color = Color(0.3325, 0.512684, 0.95, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_wkgjh"]
+prototile_id = 27
+supply = 4
+color = Color(0.6928682, 0.95, 0.3325, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_7v0ng"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_soitw"), SubResource("PaletteEntryResource_wkgjh")])
+
+[resource]
+geometry_domain = 1
+palette = SubResource("PaletteResource_7v0ng")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_7rjy2"), SubResource("BlueprintPlacementResource_vop7n"), SubResource("BlueprintPlacementResource_1xyvr"), SubResource("BlueprintPlacementResource_4e368"), SubResource("BlueprintPlacementResource_qb1lq"), SubResource("BlueprintPlacementResource_fgecm"), SubResource("BlueprintPlacementResource_ip2xk"), SubResource("BlueprintPlacementResource_bcbl1")])

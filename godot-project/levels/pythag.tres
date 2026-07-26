@@ -1,0 +1,99 @@
+[gd_resource type="LevelResource" format=3]
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_eupb7"]
+prototile_id = 34
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_7pdjd"]
+prototile_id = 27
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_6whcn"]
+prototile_id = 34
+translation_x_raw = 281474976710656
+translation_y_raw = -2533274790395904
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_t8anb"]
+prototile_id = 27
+translation_x_raw = 281474976710656
+translation_y_raw = -2814749767106560
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_g22t0"]
+prototile_id = 34
+translation_x_raw = 562949953421312
+translation_y_raw = -5066549580791808
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_cqpxl"]
+prototile_id = 27
+translation_x_raw = 562949953421312
+translation_y_raw = -5348024557502464
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_62cew"]
+prototile_id = 34
+translation_x_raw = 844424930131968
+translation_y_raw = -7599824371187712
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ojfky"]
+prototile_id = 34
+translation_x_raw = -2251799813685248
+translation_y_raw = -2814749767106560
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_jy5jg"]
+prototile_id = 34
+translation_x_raw = -1970324836974592
+translation_y_raw = -5348024557502464
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ishel"]
+prototile_id = 34
+translation_x_raw = -1688849860263936
+translation_y_raw = -7881299347898368
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_o555b"]
+prototile_id = 34
+translation_x_raw = -2533274790395904
+translation_y_raw = -281474976710656
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_ystcc"]
+prototile_id = 27
+translation_x_raw = 3096224743817216
+translation_y_raw = -5066549580791808
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_mef1r"]
+prototile_id = 27
+translation_x_raw = 2814749767106560
+translation_y_raw = -2533274790395904
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_i7t34"]
+prototile_id = 27
+translation_x_raw = 2533274790395904
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_2jhxc"]
+prototile_id = 27
+translation_x_raw = -2533274790395904
+translation_y_raw = -562949953421312
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_u0mp3"]
+prototile_id = 27
+translation_x_raw = -2251799813685248
+translation_y_raw = -3096224743817216
+
+[sub_resource type="BlueprintPlacementResource" id="BlueprintPlacementResource_m5ujo"]
+prototile_id = 27
+translation_x_raw = -1970324836974592
+translation_y_raw = -5629499534213120
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_7bbm0"]
+prototile_id = 27
+supply = 9
+color = Color(0.4075301, 0.3325, 0.95, 1)
+
+[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_o83rp"]
+prototile_id = 34
+supply = 8
+color = Color(0.95, 0.3812416, 0.3325, 1)
+
+[sub_resource type="PaletteResource" id="PaletteResource_fb8at"]
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_7bbm0"), SubResource("PaletteEntryResource_o83rp")])
+
+[resource]
+palette = SubResource("PaletteResource_fb8at")
+blueprint = Array[BlueprintPlacementResource]([SubResource("BlueprintPlacementResource_eupb7"), SubResource("BlueprintPlacementResource_7pdjd"), SubResource("BlueprintPlacementResource_6whcn"), SubResource("BlueprintPlacementResource_t8anb"), SubResource("BlueprintPlacementResource_g22t0"), SubResource("BlueprintPlacementResource_cqpxl"), SubResource("BlueprintPlacementResource_62cew"), SubResource("BlueprintPlacementResource_ojfky"), SubResource("BlueprintPlacementResource_jy5jg"), SubResource("BlueprintPlacementResource_ishel"), SubResource("BlueprintPlacementResource_o555b"), SubResource("BlueprintPlacementResource_ystcc"), SubResource("BlueprintPlacementResource_mef1r"), SubResource("BlueprintPlacementResource_i7t34"), SubResource("BlueprintPlacementResource_2jhxc"), SubResource("BlueprintPlacementResource_u0mp3"), SubResource("BlueprintPlacementResource_m5ujo")])
