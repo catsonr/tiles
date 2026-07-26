@@ -11,6 +11,9 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <cstddef>
+#include <optional>
+
 namespace tiles::game {
 
 namespace {
@@ -23,6 +26,15 @@ const char *CANONICAL_LEVEL = "res://tests/fixtures/canonical_level.tres";
 // blueprint position carries no meaning while authoring, so this is ordinary
 // content, not a malformed artifact.
 const char *OFFSET_LEVEL = "res://levels/dude.tres";
+
+// The remaining supply one palette row presents, read back through the same
+// derived status the row itself renders from. Empty would mean an unlimited
+// entry.
+std::optional<engine::Supply::Amount> remaining(const LevelPlayer &p_player, std::size_t p_entry) {
+    const auto status =
+        p_player.session()->state().supply_status(engine::PaletteEntryIndex(p_entry));
+    return status.has_value() ? status->remaining : std::nullopt;
+}
 
 } // namespace
 
@@ -101,8 +113,10 @@ void LevelPlayerIntegrationRunner::_ready() {
                            && second_preview->get_focus_mode() == godot::Control::FOCUS_NONE,
                     "tile previews cannot receive keyboard focus");
             }
-            expect(!player->entry_supply_visible(0) && !player->entry_supply_visible(1),
-                "unlimited palette entries show no supply text");
+            expect(player->entry_supply_visible(0) && player->entry_supply_visible(1),
+                "finite palette entries present their remaining supply");
+            expect(remaining(*player, 0) == 6 && remaining(*player, 1) == 6,
+                "both palette rows start at the authored finite supply");
             expect(!player->proposals().empty(),
                 "the empty state offers at least one proven opening placement");
             bool distinct_openings = true;
@@ -118,9 +132,13 @@ void LevelPlayerIntegrationRunner::_ready() {
             expect(player->accept_active_proposal(), "the ghosted command places through Session");
             expect(player->session()->state().arrangement().entries().size() == 1,
                 "placement updates the exact arrangement");
+            expect(remaining(*player, 0) == 5 && remaining(*player, 1) == 6,
+                "placing one tile spends exactly that entry's remaining supply");
             expect(player->undo(), "undo restores the real player state");
             expect(player->session()->state().arrangement().entries().empty(),
                 "undo restores the empty arrangement and its supply");
+            expect(remaining(*player, 0) == 6 && remaining(*player, 1) == 6,
+                "undo restores both remaining supplies");
         }
         player->queue_free();
     }

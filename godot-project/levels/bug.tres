@@ -197,18 +197,22 @@ translation_y_raw = 1716455859570479
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_6i4mx"]
 prototile_id = 35
+supply = 8
 color = Color(0.3325, 0.512684, 0.95, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_wnuts"]
 prototile_id = 27
+supply = 4
 color = Color(0.6928682, 0.95, 0.3325, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_mi711"]
 prototile_id = 36
+supply = 18
 color = Color(0.95, 0.3325, 0.8730522, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_pdsbm"]
 prototile_id = 37
+supply = 2
 color = Color(0.3325, 0.95, 0.8467637, 1)
 
 [sub_resource type="PaletteResource" id="PaletteResource_2r7rq"]

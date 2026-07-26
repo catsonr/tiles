@@ -27,7 +27,7 @@ step unchanged. a full pass over the current campaign takes about twenty seconds
 zooble               ok   tiles=12  solvable=yes seed-safe=yes  options=52  overlap=4  deferrals=7.3
 ```
 
-### the two that must pass
+### the two play properties that must pass
 
 **`solvable`** — can the authored solution be rebuilt from an empty board using
 only moves the player is actually offered?
@@ -45,6 +45,27 @@ a level that is not seed-safe can be lost on move one, which the player has no
 way to see coming.
 
 a failure on either prints the reason underneath the row, and fails the run.
+
+### the two that describe the palette
+
+these are not about play at all. they are about the palette telling the truth
+about the level, and they fail the run.
+
+**no unused palette entries** — every entry is a tile the authored solution
+actually places.
+
+an entry the witness never uses is usually a helper tile left behind after the
+tiling was rebuilt around it. it is not harmless: it is offered to the player,
+takes up a palette row, and asks them to rule it out by hand. it also inflates
+`options` and `overlap`, so the level measures as fiddlier than it plays.
+
+**finite supply equals compiled witness usage** — a retained entry's supply is
+exactly how many of that prototile the witness places.
+
+this makes the palette part of the problem statement rather than a suggestion:
+the countdown beside each row is the real number of pieces the solution needs.
+supply above the witness count is slack nobody authored, and an unlimited supply
+is not a statement about how many pieces a solution takes.
 
 ### the three that describe feel
 
@@ -127,6 +148,24 @@ neighbour or by the region boundary.
 
 **`seed-safe` short of the tile count** — some opening move strands the level.
 the row names how many openings are safe and how far the worst one gets.
+
+**`FAILED at palette: prototile N is never placed by the witness`** — the
+palette carries an entry the solution does not use. it reports the configured
+supply and the witness count, which is zero. delete the entry: both its
+`PaletteEntryResource` block and its reference in the palette's `entries` array.
+the remaining entries keep their order and their ids are never renumbered.
+
+**`FAILED at palette: prototile N supply=S witness=W`** — the entry's supply
+disagrees with the solution. set `supply = W`. an unlimited supply reports as
+`supply=unlimited` rather than as a number, because "as many as you like" is a
+different authored statement from any particular count, and printing `W` there
+would read as though the level already said it.
+
+both palette failures are reported before the level's geometry is examined, so a
+level can be normalized without solving anything else first. deleting an unused
+entry may lower that level's `options` and `overlap`, because those maxima range
+over the palette — that is the measurement catching up with the content, not a
+change in the level's geometry.
 
 ## what is not checked
 

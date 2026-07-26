@@ -169,22 +169,16 @@ translation_y_raw = -243764480361061
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_71vov"]
 prototile_id = 35
+supply = 24
 color = Color(0.3325, 0.512684, 0.95, 1)
-
-[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_ylrav"]
-prototile_id = 27
-color = Color(0.6928682, 0.95, 0.3325, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_sd566"]
 prototile_id = 36
+supply = 6
 color = Color(0.95, 0.3325, 0.8730522, 1)
 
-[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_a4c5f"]
-prototile_id = 37
-color = Color(0.3325, 0.95, 0.8467637, 1)
-
 [sub_resource type="PaletteResource" id="PaletteResource_fljk6"]
-entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_71vov"), SubResource("PaletteEntryResource_ylrav"), SubResource("PaletteEntryResource_sd566"), SubResource("PaletteEntryResource_a4c5f")])
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_71vov"), SubResource("PaletteEntryResource_sd566")])
 
 [resource]
 geometry_domain = 1

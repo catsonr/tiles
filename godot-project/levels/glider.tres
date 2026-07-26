@@ -74,7 +74,7 @@ translation_y_raw = 525239457071717
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_12b10"]
 prototile_id = 35
 supply = 5
-color = Color(0.2145639, 0.26248625, 0.37812495, 1)
+color = Color(1, 0.82, 0.16, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_rd8jg"]
 prototile_id = 27

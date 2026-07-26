@@ -113,14 +113,17 @@ translation_y_raw = 1970324836974592
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_eepj2"]
 prototile_id = 17
+supply = 8
 color = Color(0.3325, 0.9256292, 0.95, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_4nfck"]
 prototile_id = 18
+supply = 4
 color = Color(0.95, 0.7941867, 0.3325, 1)
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_hufoi"]
 prototile_id = 19
+supply = 6
 color = Color(0.61400276, 0.3325, 0.95, 1)
 
 [sub_resource type="PaletteResource" id="PaletteResource_hon3d"]

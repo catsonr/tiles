@@ -109,20 +109,13 @@ prototile_id = 8
 translation_x_raw = -1125899906842624
 translation_y_raw = -281474976710656
 
-[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_hirfp"]
-prototile_id = 5
-color = Color(0.95, 0.6665796, 0.3325, 1)
-
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_w6kk0"]
 prototile_id = 8
+supply = 19
 color = Color(0.95, 0.3325, 0.5389727, 1)
 
-[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_erb3m"]
-prototile_id = 28
-color = Color(0.43765393, 0.95, 0.3325, 1)
-
 [sub_resource type="PaletteResource" id="PaletteResource_uhq8b"]
-entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_hirfp"), SubResource("PaletteEntryResource_w6kk0"), SubResource("PaletteEntryResource_erb3m")])
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_w6kk0")])
 
 [resource]
 palette = SubResource("PaletteResource_uhq8b")

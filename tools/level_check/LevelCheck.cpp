@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -60,6 +61,15 @@ struct Record final {
 
 void fail(const std::string &p_level, const char *p_stage) {
     std::printf("%-20s FAILED at %s\n", p_level.c_str(), p_stage);
+}
+
+// An unlimited supply is never reported as a number: a configured capacity of
+// "as many as you like" and a configured capacity of 7 are different authored
+// statements, and printing the witness count in place of the former would read
+// as though the level said something it does not.
+std::string supply_text(engine::Supply p_supply) {
+    const std::optional<engine::Supply::Amount> amount = p_supply.finite_amount();
+    return amount.has_value() ? std::to_string(amount.value()) : "unlimited";
 }
 
 // LevelPlayer's contact rule: a shared length of boundary, not a shared point.
@@ -179,6 +189,49 @@ int main(int argc, char **argv) {
         return 1;
     }
     const Arrangement witness = std::move(witness_result).value();
+
+    // --- stage 1b: the palette says exactly what the solution uses ----------
+    //
+    // A palette is a claim about the level's content. Every entry is a tile the
+    // solution places, and a finite supply is exactly how many of them it
+    // places. An entry the witness never uses is a leftover the player has to
+    // rule out by hand; a finite supply above the witness count is slack nobody
+    // authored on purpose. Both are checked here rather than trusted, so the
+    // convention survives every later edit of a level.
+    //
+    // An unlimited supply fails for the same reason: authored content states how
+    // many pieces a solution takes, and "as many as you like" is not that
+    // statement.
+
+    bool normalized = true;
+    for (const engine::PaletteEntry &entry : palette.entries()) {
+        const PrototileId id = entry.prototile().id();
+        std::size_t used = 0;
+        for (const Entry &placed : witness.entries()) {
+            if (placed.placement.prototile().id() == id) {
+                ++used;
+            }
+        }
+        const std::string configured = supply_text(entry.supply());
+        if (used == 0) {
+            fail(level,
+                ("palette: prototile " + std::to_string(id.value())
+                    + " is never placed by the witness; supply=" + configured + " witness=0")
+                    .c_str());
+            normalized = false;
+            continue;
+        }
+        if (entry.supply().is_unlimited() || entry.supply().finite_amount().value() != used) {
+            fail(level,
+                ("palette: prototile " + std::to_string(id.value()) + " supply=" + configured
+                    + " witness=" + std::to_string(used))
+                    .c_str());
+            normalized = false;
+        }
+    }
+    if (!normalized) {
+        return 1;
+    }
 
     auto region_result = region_from_arrangement(witness);
     if (!region_result) {

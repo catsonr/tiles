@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cspicvr8gwltr"]
 
 [node name="LevelPlayer" type="LevelPlayer" unique_id=1999715752]
-level_path = "res://levels/galaxy.tres"
+level_path = "res://levels/guy_f.tres"
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0

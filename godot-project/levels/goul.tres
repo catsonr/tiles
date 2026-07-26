@@ -116,14 +116,11 @@ translation_y_raw = 2814749767106560
 
 [sub_resource type="PaletteEntryResource" id="PaletteEntryResource_xqbas"]
 prototile_id = 22
+supply = 22
 color = Color(0.3325, 0.5915496, 0.95, 1)
 
-[sub_resource type="PaletteEntryResource" id="PaletteEntryResource_1gr08"]
-prototile_id = 23
-color = Color(0.77173364, 0.95, 0.3325, 1)
-
 [sub_resource type="PaletteResource" id="PaletteResource_5mnv4"]
-entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_xqbas"), SubResource("PaletteEntryResource_1gr08")])
+entries = Array[PaletteEntryResource]([SubResource("PaletteEntryResource_xqbas")])
 
 [resource]
 palette = SubResource("PaletteResource_5mnv4")
