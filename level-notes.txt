@@ -11,3 +11,7 @@ some levels it seems you cant place the initial tile(!!):
 also, zooble gets broken after placing the two 1x1 and next two 3x3s
 im sure this is because i did a weird construction in the editor for
 offsets
+
+also also, change glider triangle color
+
+also also also, some levels have a larger order pallete than needed.

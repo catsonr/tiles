@@ -15,9 +15,13 @@ playtesting and iteration.
 
 ```text
 src/            authored C++ (compiled into the GDExtension)
+tools/          developer tooling built from the same core, without Godot
 vendor/         third-party source (godot-cpp, pinned as a submodule)
 godot-project/  the Godot project and its assets
 ```
+
+Authored levels are validated by a checker that links the real core and engine
+but no Godot runtime — see [docs/TEST-LEVELS.md](docs/TEST-LEVELS.md).
 
 The native library is built from `src/` and written into
 `godot-project/bin/<platform>/`, where the `.gdextension` descriptor loads it.
