@@ -1,9 +1,11 @@
 #include "register_types.h"
 
+#include "game/Exam.h"
 #include "game/LevelEditor.h"
 #include "game/LevelPlayer.h"
 #include "game/PrototilePreview.h"
 #include "game/resources/LevelResources.h"
+#include "game/testing/ExamIntegrationRunner.h"
 #include "game/testing/LevelEditorIntegrationRunner.h"
 #include "game/testing/LevelPlayerIntegrationRunner.h"
 #include "game/testing/ResourceIntegrationRunner.h"
@@ -30,12 +32,16 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     GDREGISTER_CLASS(tiles::game::ResourceIntegrationRunner);
     GDREGISTER_CLASS(tiles::game::LevelEditorIntegrationRunner);
     GDREGISTER_CLASS(tiles::game::LevelPlayerIntegrationRunner);
+    GDREGISTER_CLASS(tiles::game::ExamIntegrationRunner);
 
-    // The row preview is constructed by LevelEditor, so it must exist in ClassDB
-    // before the main scene is instantiated.
+    // The row preview is constructed by LevelEditor and by the exam's palette,
+    // so it must exist in ClassDB before the main scene is instantiated. The
+    // exam instantiates the problem canvas scene, so the player must exist
+    // before the exam does.
     GDREGISTER_CLASS(tiles::game::PrototilePreview);
     GDREGISTER_CLASS(tiles::game::LevelEditor);
     GDREGISTER_CLASS(tiles::game::LevelPlayer);
+    GDREGISTER_CLASS(tiles::game::Exam);
 }
 
 void uninitialize_tiles_module(godot::ModuleInitializationLevel p_level) {

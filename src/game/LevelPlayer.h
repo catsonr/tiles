@@ -1,12 +1,11 @@
 #pragma once
 
-#include "content/PrototileCatalog.h"
 #include "core/Placement.h"
 #include "engine/Commands.h"
 #include "engine/Session.h"
+#include "game/ProblemState.h"
 
 #include <godot_cpp/classes/control.hpp>
-#include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/rich_text_label.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -15,18 +14,29 @@
 #include <godot_cpp/variant/vector2.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <variant>
 #include <vector>
 
 namespace tiles::game {
 
-class PrototilePreview;
-
-// One intentionally small presentation shell around an empty exact Session.
-// It loads an authored level once, then only selects among and applies commands
-// the engine has already proven legal. Screen coordinates rank and hit-test
-// rendered values only; they never create model geometry.
+// One problem's visible canvas: its number, its exact target, its exact current
+// arrangement, its active ghost, and its completion.
+//
+// It owns no play state. It borrows one persistent ProblemState and applies
+// every mutation to that problem's real Session, so destroying the node leaves
+// the problem exactly as the player left it. Proposals, the active proposal, the
+// pointer, the projection, and hit-test results are transient presentation and
+// are rebuilt from the persistent state whenever the canvas is bound.
+//
+// It selects among and applies only commands the engine has already proven
+// legal. Screen coordinates rank and hit-test rendered values only; they never
+// create model geometry.
+//
+// The canvas moves during problem navigation and is created and destroyed around
+// it. It therefore handles no input of its own and owns no palette row or status
+// line: the fixed shell routes operations to whichever canvas is current.
 class LevelPlayer : public godot::Control {
     GDCLASS(LevelPlayer, godot::Control)
 
@@ -34,10 +44,7 @@ protected:
     static void _bind_methods();
 
 public:
-    struct Selection final {
-        std::size_t entry;
-        std::size_t orientation;
-    };
+    using Selection = PaletteSelection;
 
     using ProposalCommand = std::variant<
         engine::PlaceCommand,
@@ -51,10 +58,23 @@ public:
 
     void _ready() override;
     void _draw() override;
-    void _gui_input(const godot::Ref<godot::InputEvent> &p_event) override;
+    void _notification(int p_what);
 
-    void set_level_path(const godot::String &p_path);
-    godot::String get_level_path() const;
+    // The color the exact target is filled with. The fixed shell borrows it so
+    // the palette's selected-row highlight and the region are one decision
+    // rather than two literals which can drift apart.
+    static godot::Color region_fill_color();
+
+    // Present one persistent problem. Everything transient is rebuilt here, and
+    // nothing about the bound problem is mutated: binding is not a play event and
+    // emits no semantic hook.
+    void bind(
+        ProblemState &p_state,
+        std::int64_t p_problem_number,
+        ProblemStateObserver *p_observer);
+    bool bound() const;
+    std::int64_t problem_number() const;
+    const ProblemState *state() const;
 
     void select_entry(std::size_t p_entry);
     void cycle_entry(bool p_forward);
@@ -63,56 +83,61 @@ public:
     bool remove_at_local(godot::Vector2 p_local);
     bool undo();
     void set_pointer(godot::Vector2 p_local);
-    bool initialized() const;
+
     const engine::Session *session() const;
     std::optional<Selection> selection() const;
     const std::vector<Proposal> &proposals() const;
     std::optional<std::size_t> active_proposal() const;
-    std::optional<godot::Color> entry_color(std::size_t p_entry) const;
-    const PrototilePreview *entry_preview(std::size_t p_entry) const;
-    bool entry_supply_visible(std::size_t p_entry) const;
     bool completion_visible() const;
+    // The fixed status line's current text for this problem: its transient
+    // refusal, its completion, or the ordinary control hint.
+    godot::String status_text() const;
+    const godot::Label *number_label() const;
+    const godot::RichTextLabel *completion_label() const;
     godot::Vector2 project(Point p_point) const;
     godot::Rect2 canvas_rect() const;
 
 private:
-    struct EntryControl final {
-        PrototilePreview *preview = nullptr;
-        godot::Label *supply = nullptr;
+    // Which exact proposal the ghost is drawing, if any. Compared across an
+    // operation so a hook reports a real change of ghost rather than an index
+    // which happens to have been reused by a rebuilt proposal list.
+    struct GhostIdentity final {
+        bool present = false;
+        Point translation { Coordinate::from_raw(0), Coordinate::from_raw(0) };
     };
 
-    bool load();
-    void build_palette_controls();
-    void refresh_controls();
     void rebuild_proposals();
     bool update_active_proposal();
     void refresh_after_mutation();
+    void refresh_completion();
+    void notify_shell();
+    GhostIdentity ghost_identity() const;
+    void emit_ghost_change(const GhostIdentity &p_before);
+    void emit_victory_if_reached();
     const engine::PaletteEntry *selected_entry() const;
     const OrientedPrototile *selected_variant() const;
     std::optional<std::size_t> placement_at_local(godot::Vector2 p_local) const;
-    void update_projection();
     void update_canvas_rect();
+    void update_projection();
     godot::Vector2 project(double p_x, double p_y) const;
     void draw_polygon(const Polygon &p_polygon, godot::Color p_fill, float p_outline);
     void draw_region();
     void draw_arrangement();
     void draw_ghost();
 
-    godot::String level_path_;
-    std::optional<content::PrototileCatalog> catalog_;
-    std::optional<engine::Session> session_;
-    std::vector<godot::Color> colors_;
-    std::optional<Selection> selection_;
+    ProblemState *state_ = nullptr;
+    ProblemStateObserver *observer_ = nullptr;
+    std::int64_t problem_number_ = 0;
+    bool solved_ = false;
+    godot::String refusal_;
     std::vector<Proposal> proposals_;
     std::optional<std::size_t> active_proposal_;
     std::optional<godot::Vector2> pointer_;
     godot::Rect2 canvas_rect_;
     godot::Vector2 projection_origin_;
     double pixels_per_unit_ = 1.0;
-    godot::Label *status_label_ = nullptr;
+    godot::Label *number_label_ = nullptr;
     godot::RichTextLabel *completion_label_ = nullptr;
-    godot::Control *palette_rows_ = nullptr;
-    std::vector<EntryControl> entry_controls_;
 };
 
 } // namespace tiles::game

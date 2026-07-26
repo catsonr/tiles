@@ -1,0 +1,60 @@
+[gd_scene format=3]
+
+[node name="Exam" type="Exam"]
+manifest = PackedStringArray("res://levels/act0-level.tres", "res://levels/raine_flower.tres", "res://levels/horse.tres", "res://levels/izjl.tres", "res://levels/small.tres", "res://levels/raine_candy_bug.tres", "res://levels/ring.tres", "res://levels/zooble.tres", "res://levels/goul.tres", "res://levels/glider.tres", "res://levels/bird.tres", "res://levels/spore.tres", "res://levels/pythag.tres", "res://levels/snake_tri_hex.tres", "res://levels/guy_f.tres", "res://levels/dude.tres", "res://levels/galaxy.tres", "res://levels/fan.tres", "res://levels/zig.tres", "res://levels/bug.tres", "res://levels/slurm.tres", "res://levels/spider.tres", "res://levels/message.tres", "res://levels/perkins.tres")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 2
+
+[node name="Viewport" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 260.0
+offset_bottom = -44.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+clip_contents = true
+
+[node name="Palette" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 260.0
+offset_bottom = -44.0
+grow_vertical = 2
+color = Color(0.18, 0.19, 0.23, 1)
+
+[node name="Margin" type="MarginContainer" parent="Palette"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="Rows" type="VBoxContainer" parent="Palette/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Status" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -44.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "tab: tile | r: rotate | click: place | right click: remove | ctrl-z: undo"
+horizontal_alignment = 1
+vertical_alignment = 1

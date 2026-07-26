@@ -3,23 +3,13 @@
 #include "core/geometry/Coordinate.h"
 #include "core/geometry/Predicates.h"
 #include "core/geometry/Triangle.h"
-#include "game/PrototilePreview.h"
-#include "game/resources/LevelPersistence.h"
 
-#include <godot_cpp/classes/h_box_container.hpp>
-#include <godot_cpp/classes/input_event_key.hpp>
-#include <godot_cpp/classes/input_event_mouse_button.hpp>
-#include <godot_cpp/classes/input_event_mouse_motion.hpp>
-#include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/core/object.hpp>
-#include <godot_cpp/variant/callable.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
-#include <cstdint>
 #include <utility>
 
 namespace tiles::game {
@@ -34,6 +24,10 @@ const godot::Color GHOST_OUTLINE(1.0f, 1.0f, 1.0f, 0.9f);
 constexpr double CANVAS_MARGIN = 28.0;
 constexpr float OUTLINE_WIDTH = 2.0f;
 constexpr float GHOST_ALPHA = 0.45f;
+
+const char *CONTROL_HINT =
+    "tab: tile | r: rotate | click: place | right click: remove | ctrl-z: undo";
+const char *COMPLETE_STATUS = "complete! (scroll down for next problem)";
 
 double to_real(Coordinate p_coordinate) {
     return static_cast<double>(p_coordinate.raw()) / static_cast<double>(Coordinate::SCALE);
@@ -90,119 +84,115 @@ bool contains_screen_polygon(const godot::PackedVector2Array &p_points, godot::V
 
 } // namespace
 
+// Semantic results, not raw input. Every one of these is emitted by the
+// operation which already knows it succeeded and already knows whether anything
+// observable changed. A consumer may ignore all of them and the game plays
+// identically.
 void LevelPlayer::_bind_methods() {
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("set_level_path", "path"), &LevelPlayer::set_level_path);
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("get_level_path"), &LevelPlayer::get_level_path);
-    ADD_PROPERTY(
-        godot::PropertyInfo(
-            godot::Variant::STRING,
-            "level_path",
-            godot::PROPERTY_HINT_FILE,
-            "*.tres"),
-        "set_level_path",
-        "get_level_path");
+    ADD_SIGNAL(godot::MethodInfo(
+        "palette_selected", godot::PropertyInfo(godot::Variant::INT, "entry")));
+    ADD_SIGNAL(godot::MethodInfo(
+        "orientation_changed",
+        godot::PropertyInfo(godot::Variant::INT, "entry"),
+        godot::PropertyInfo(godot::Variant::INT, "orientation")));
+    ADD_SIGNAL(godot::MethodInfo(
+        "placement_succeeded", godot::PropertyInfo(godot::Variant::INT, "entry")));
+    ADD_SIGNAL(godot::MethodInfo("removal_succeeded"));
+    ADD_SIGNAL(godot::MethodInfo("undo_succeeded"));
+    ADD_SIGNAL(godot::MethodInfo(
+        "active_proposal_changed",
+        godot::PropertyInfo(godot::Variant::BOOL, "present"),
+        godot::PropertyInfo(godot::Variant::INT, "proposal")));
+    ADD_SIGNAL(godot::MethodInfo("victory_reached"));
 }
 
-void LevelPlayer::set_level_path(const godot::String &p_path) {
-    level_path_ = p_path;
-}
-
-godot::String LevelPlayer::get_level_path() const {
-    return level_path_;
+godot::Color LevelPlayer::region_fill_color() {
+    return TARGET_FILL;
 }
 
 void LevelPlayer::_ready() {
-    status_label_ = godot::Object::cast_to<godot::Label>(get_node_or_null("Status"));
+    number_label_ = godot::Object::cast_to<godot::Label>(get_node_or_null("Number"));
     completion_label_ = godot::Object::cast_to<godot::RichTextLabel>(get_node_or_null("Complete"));
-    palette_rows_ = godot::Object::cast_to<godot::Control>(get_node_or_null("Palette/Margin/Rows"));
-    if (status_label_ == nullptr || completion_label_ == nullptr || palette_rows_ == nullptr) {
-        godot::UtilityFunctions::push_error("[tiles] level player scene is incomplete");
+    if (number_label_ == nullptr || completion_label_ == nullptr) {
+        godot::UtilityFunctions::push_error("[tiles] problem canvas scene is incomplete");
         return;
     }
     completion_label_->set_visible(false);
-    set_focus_mode(godot::Control::FOCUS_ALL);
-    if (!load()) {
-        return;
+    // The canvas is moved, created, and destroyed around navigation, so it is
+    // never an input target. The fixed shell routes play to whichever canvas is
+    // current.
+    set_mouse_filter(godot::Control::MOUSE_FILTER_IGNORE);
+    set_clip_contents(true);
+}
+
+void LevelPlayer::_notification(int p_what) {
+    if (p_what == godot::Control::NOTIFICATION_RESIZED) {
+        update_canvas_rect();
+        update_projection();
+        queue_redraw();
     }
-    build_palette_controls();
+}
+
+void LevelPlayer::bind(
+    ProblemState &p_state, std::int64_t p_problem_number, ProblemStateObserver *p_observer) {
+    state_ = &p_state;
+    observer_ = p_observer;
+    problem_number_ = p_problem_number;
+    refusal_ = godot::String();
+    pointer_.reset();
+    // Completion is read from the bound state rather than assumed absent, so a
+    // solved problem returns solved and cannot emit victory a second time.
+    solved_ = state_->session().state().solved();
+    if (number_label_ != nullptr) {
+        number_label_->set_text(
+            godot::String("problem ") + godot::String::num_int64(problem_number_));
+    }
     update_canvas_rect();
     update_projection();
-    refresh_controls();
-    grab_focus();
-    queue_redraw();
-    godot::UtilityFunctions::print("[tiles] level player ready: ", level_path_);
-}
-
-bool LevelPlayer::load() {
-    auto catalog = content::make_canonical_prototile_catalog();
-    if (!catalog) {
-        godot::UtilityFunctions::push_error("[tiles] level player: canonical catalog failed");
-        return false;
-    }
-    catalog_ = std::move(catalog).value();
-    auto loaded = load_level_resource(level_path_, catalog_.value());
-    if (!loaded) {
-        godot::UtilityFunctions::push_error(
-            "[tiles] level player: level load failed with typed code ",
-            static_cast<std::int64_t>(loaded.error().code));
-        return false;
-    }
-    LoadedLevelResource level = std::move(loaded).value();
-    const godot::Ref<PaletteResource> palette_resource = level.resource->get_palette();
-    const godot::TypedArray<PaletteEntryResource> entries = palette_resource->get_entries();
-    colors_.reserve(static_cast<std::size_t>(entries.size()));
-    for (std::int64_t i = 0; i < entries.size(); ++i) {
-        const godot::Ref<PaletteEntryResource> entry = entries[i];
-        colors_.push_back(entry->get_color());
-    }
-    session_.emplace(engine::State(std::move(level.compiled.level)));
-    selection_ = Selection { 0, 0 };
     rebuild_proposals();
-    return true;
+    refresh_completion();
+    queue_redraw();
 }
 
-void LevelPlayer::build_palette_controls() {
-    for (EntryControl &entry : entry_controls_) {
-        if (entry.preview != nullptr) {
-            entry.preview->queue_free();
-        }
-    }
-    entry_controls_.clear();
-    const std::vector<engine::PaletteEntry> &entries = session_->state().palette().entries();
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-        auto *row = memnew(godot::HBoxContainer);
-        auto *preview = memnew(PrototilePreview);
-        preview->set_custom_minimum_size(godot::Vector2(72.0f, 56.0f));
-        preview->set_mouse_filter(godot::Control::MOUSE_FILTER_IGNORE);
-        preview->set_polygon(entries[i].orientations().front().canonical_polygon());
-        preview->set_fill_color(colors_[i]);
-        auto *supply = memnew(godot::Label);
-        row->add_child(preview);
-        row->add_child(supply);
-        palette_rows_->add_child(row);
-        entry_controls_.push_back(EntryControl { preview, supply });
-    }
+bool LevelPlayer::bound() const {
+    return state_ != nullptr;
+}
+
+std::int64_t LevelPlayer::problem_number() const {
+    return problem_number_;
+}
+
+const ProblemState *LevelPlayer::state() const {
+    return state_;
 }
 
 void LevelPlayer::select_entry(std::size_t p_entry) {
-    if (!session_.has_value() || p_entry >= session_->state().palette().entries().size()) {
+    if (state_ == nullptr
+        || p_entry >= state_->session().state().palette().entries().size()) {
         return;
     }
-    selection_ = Selection { p_entry, 0 };
+    const GhostIdentity before = ghost_identity();
+    const bool changed = !state_->selection().has_value()
+        || state_->selection()->entry != p_entry;
+    state_->set_selection(Selection { p_entry, 0 });
+    refusal_ = godot::String();
     rebuild_proposals();
-    refresh_controls();
     queue_redraw();
+    notify_shell();
+    if (changed) {
+        emit_signal(
+            godot::StringName("palette_selected"), static_cast<std::int64_t>(p_entry));
+    }
+    emit_ghost_change(before);
 }
 
 void LevelPlayer::cycle_entry(bool p_forward) {
-    if (!selection_.has_value()) {
+    if (state_ == nullptr || !state_->selection().has_value()) {
         return;
     }
-    const std::size_t count = session_->state().palette().entries().size();
-    select_entry(p_forward ? (selection_->entry + 1) % count
-                           : (selection_->entry + count - 1) % count);
+    const std::size_t count = state_->session().state().palette().entries().size();
+    const std::size_t entry = state_->selection()->entry;
+    select_entry(p_forward ? (entry + 1) % count : (entry + count - 1) % count);
 }
 
 void LevelPlayer::cycle_orientation(bool p_forward) {
@@ -210,28 +200,42 @@ void LevelPlayer::cycle_orientation(bool p_forward) {
     if (entry == nullptr) {
         return;
     }
+    const GhostIdentity before = ghost_identity();
+    const Selection selection = state_->selection().value();
     const std::size_t count = entry->orientations().size();
-    selection_->orientation = p_forward ? (selection_->orientation + 1) % count
-                                        : (selection_->orientation + count - 1) % count;
+    const std::size_t orientation = p_forward ? (selection.orientation + 1) % count
+                                              : (selection.orientation + count - 1) % count;
+    const bool changed = orientation != selection.orientation;
+    state_->set_selection(Selection { selection.entry, orientation });
+    refusal_ = godot::String();
     rebuild_proposals();
-    refresh_controls();
     queue_redraw();
+    notify_shell();
+    if (changed) {
+        emit_signal(
+            godot::StringName("orientation_changed"),
+            static_cast<std::int64_t>(selection.entry),
+            static_cast<std::int64_t>(orientation));
+    }
+    emit_ghost_change(before);
 }
 
 const engine::PaletteEntry *LevelPlayer::selected_entry() const {
-    if (!session_.has_value() || !selection_.has_value()) {
+    if (state_ == nullptr || !state_->selection().has_value()) {
         return nullptr;
     }
-    const auto &entries = session_->state().palette().entries();
-    return selection_->entry < entries.size() ? &entries[selection_->entry] : nullptr;
+    const auto &entries = state_->session().state().palette().entries();
+    const std::size_t entry = state_->selection()->entry;
+    return entry < entries.size() ? &entries[entry] : nullptr;
 }
 
 const OrientedPrototile *LevelPlayer::selected_variant() const {
     const engine::PaletteEntry *entry = selected_entry();
-    if (entry == nullptr || selection_->orientation >= entry->orientations().size()) {
+    if (entry == nullptr
+        || state_->selection()->orientation >= entry->orientations().size()) {
         return nullptr;
     }
-    return &entry->orientations()[selection_->orientation];
+    return &entry->orientations()[state_->selection()->orientation];
 }
 
 void LevelPlayer::rebuild_proposals() {
@@ -241,9 +245,9 @@ void LevelPlayer::rebuild_proposals() {
     if (candidate == nullptr) {
         return;
     }
-    const engine::State &state = session_->state();
-    const engine::PaletteEntryIndex entry(selection_->entry);
-    const engine::PaletteOrientationIndex orientation(selection_->orientation);
+    const engine::State &state = state_->session().state();
+    const engine::PaletteEntryIndex entry(state_->selection()->entry);
+    const engine::PaletteOrientationIndex orientation(state_->selection()->orientation);
     const auto supply = state.supply_status(entry);
     if (supply.has_value() && supply->remaining.has_value() && supply->remaining.value() == 0) {
         return;
@@ -363,23 +367,64 @@ bool LevelPlayer::update_active_proposal() {
     return changed;
 }
 
-bool LevelPlayer::accept_active_proposal() {
+LevelPlayer::GhostIdentity LevelPlayer::ghost_identity() const {
     if (!active_proposal_.has_value()) {
+        return GhostIdentity {};
+    }
+    GhostIdentity identity;
+    identity.present = true;
+    identity.translation = proposals_[active_proposal_.value()].placement.translation();
+    return identity;
+}
+
+void LevelPlayer::emit_ghost_change(const GhostIdentity &p_before) {
+    const GhostIdentity after = ghost_identity();
+    if (after.present == p_before.present
+        && (!after.present || after.translation == p_before.translation)) {
+        return;
+    }
+    emit_signal(
+        godot::StringName("active_proposal_changed"),
+        after.present,
+        after.present ? static_cast<std::int64_t>(active_proposal_.value()) : std::int64_t(-1));
+}
+
+// Victory is the unsolved-to-solved transition of the bound exact state, and
+// nothing else. Returning to an unsolved state through removal or undo arms it
+// again.
+void LevelPlayer::emit_victory_if_reached() {
+    const bool solved = state_->session().state().solved();
+    const bool reached = solved && !solved_;
+    solved_ = solved;
+    if (reached) {
+        emit_signal(godot::StringName("victory_reached"));
+    }
+}
+
+bool LevelPlayer::accept_active_proposal() {
+    if (state_ == nullptr || !active_proposal_.has_value()) {
         return false;
     }
+    const GhostIdentity before = ghost_identity();
+    const std::size_t entry = state_->selection()->entry;
     const ProposalCommand &command = proposals_[active_proposal_.value()].command;
     const bool applied = std::visit(
-        [this](const auto &p_command) { return session_->apply(p_command).has_value(); }, command);
+        [this](const auto &p_command) { return state_->session().apply(p_command).has_value(); },
+        command);
     if (!applied) {
-        status_label_->set_text("placement rejected");
+        refusal_ = "placement rejected";
+        notify_shell();
         return false;
     }
     refresh_after_mutation();
+    emit_signal(godot::StringName("placement_succeeded"), static_cast<std::int64_t>(entry));
+    emit_ghost_change(before);
+    emit_victory_if_reached();
     return true;
 }
 
 std::optional<std::size_t> LevelPlayer::placement_at_local(godot::Vector2 p_local) const {
-    const auto &entries = session_->state().arrangement().entries();
+    const auto &entries = state_->session().state().arrangement().entries();
     for (std::size_t i = entries.size(); i > 0; --i) {
         godot::PackedVector2Array points;
         for (const Point &vertex : entries[i - 1].placement.footprint().vertices()) {
@@ -393,81 +438,96 @@ std::optional<std::size_t> LevelPlayer::placement_at_local(godot::Vector2 p_loca
 }
 
 bool LevelPlayer::remove_at_local(godot::Vector2 p_local) {
-    const auto index = placement_at_local(p_local);
-    if (!index.has_value()) {
-        status_label_->set_text("no placed tile is under the pointer");
+    if (state_ == nullptr) {
         return false;
     }
-    const PlacementId id = session_->state().arrangement().entries()[index.value()].id;
-    if (!session_->apply(engine::RemoveCommand { id })) {
-        status_label_->set_text("removal rejected");
+    const GhostIdentity before = ghost_identity();
+    const auto index = placement_at_local(p_local);
+    if (!index.has_value()) {
+        refusal_ = "no placed tile is under the pointer";
+        notify_shell();
+        return false;
+    }
+    const PlacementId id = state_->session().state().arrangement().entries()[index.value()].id;
+    if (!state_->session().apply(engine::RemoveCommand { id })) {
+        refusal_ = "removal rejected";
+        notify_shell();
         return false;
     }
     refresh_after_mutation();
+    emit_signal(godot::StringName("removal_succeeded"));
+    emit_ghost_change(before);
+    emit_victory_if_reached();
     return true;
 }
 
 bool LevelPlayer::undo() {
-    if (!session_->undo()) {
+    if (state_ == nullptr) {
+        return false;
+    }
+    const GhostIdentity before = ghost_identity();
+    if (!state_->session().undo()) {
         return false;
     }
     refresh_after_mutation();
+    emit_signal(godot::StringName("undo_succeeded"));
+    emit_ghost_change(before);
+    emit_victory_if_reached();
     return true;
 }
 
 void LevelPlayer::refresh_after_mutation() {
+    refusal_ = godot::String();
     pointer_.reset();
     rebuild_proposals();
-    refresh_controls();
+    refresh_completion();
     queue_redraw();
+    notify_shell();
 }
 
 void LevelPlayer::set_pointer(godot::Vector2 p_local) {
+    if (state_ == nullptr) {
+        return;
+    }
+    const GhostIdentity before = ghost_identity();
     pointer_ = p_local;
     if (update_active_proposal()) {
         queue_redraw();
     }
+    emit_ghost_change(before);
 }
 
-void LevelPlayer::refresh_controls() {
-    if (!session_.has_value()) {
-        return;
+void LevelPlayer::refresh_completion() {
+    if (completion_label_ != nullptr) {
+        completion_label_->set_visible(state_ != nullptr && state_->session().state().solved());
     }
-    for (std::size_t i = 0; i < entry_controls_.size(); ++i) {
-        const auto status = session_->state().supply_status(engine::PaletteEntryIndex(i));
-        const bool finite = status->remaining.has_value();
-        entry_controls_[i].supply->set_visible(finite);
-        if (finite) {
-            entry_controls_[i].supply->set_text(
-                godot::String("× ") + godot::String::num_uint64(status->remaining.value()));
-        }
-        if (entry_controls_[i].preview != nullptr) {
-            const engine::PaletteEntry &entry = session_->state().palette().entries()[i];
-            const std::size_t orientation = i == selection_->entry ? selection_->orientation : 0;
-            entry_controls_[i].preview->set_polygon(entry.orientations()[orientation].canonical_polygon());
-            entry_controls_[i].preview->set_fill_color(colors_[i]);
-            entry_controls_[i].preview->set_modulate(
-                i == selection_->entry ? godot::Color(1, 1, 1, 1) : godot::Color(0.62f, 0.62f, 0.62f, 1));
-        }
+}
+
+void LevelPlayer::notify_shell() {
+    if (observer_ != nullptr) {
+        observer_->on_problem_presentation_changed();
     }
-    completion_label_->set_visible(session_->state().solved());
-    status_label_->set_text(session_->state().solved()
-                                ? "complete :)"
-                                : "tab: tile | r: rotate | click: place | right click: remove | ctrl-z: undo");
+}
+
+godot::String LevelPlayer::status_text() const {
+    if (!refusal_.is_empty()) {
+        return refusal_;
+    }
+    if (state_ != nullptr && state_->session().state().solved()) {
+        return COMPLETE_STATUS;
+    }
+    return CONTROL_HINT;
 }
 
 void LevelPlayer::update_canvas_rect() {
-    const godot::Vector2 size = get_size();
-    canvas_rect_ = godot::Rect2(
-        godot::Vector2(260.0f, 0.0f),
-        godot::Vector2(std::max(0.0f, size.x - 260.0f), std::max(0.0f, size.y - 44.0f)));
+    canvas_rect_ = godot::Rect2(godot::Vector2(0.0f, 0.0f), get_size());
 }
 
 void LevelPlayer::update_projection() {
-    if (!session_.has_value()) {
+    if (state_ == nullptr) {
         return;
     }
-    const Polygon &outer = session_->state().region().outer_boundary();
+    const Polygon &outer = state_->session().state().region().outer_boundary();
     double min_x = to_real(outer.vertices().front().x);
     double max_x = min_x;
     double min_y = to_real(outer.vertices().front().y);
@@ -513,7 +573,7 @@ void LevelPlayer::draw_polygon(const Polygon &p_polygon, godot::Color p_fill, fl
 }
 
 void LevelPlayer::draw_region() {
-    const Region &region = session_->state().region();
+    const Region &region = state_->session().state().region();
     draw_polygon(region.outer_boundary(), TARGET_FILL, OUTLINE_WIDTH);
     for (const Polygon &hole : region.inner_boundaries()) {
         draw_polygon(hole, CANVAS_BACKGROUND, OUTLINE_WIDTH);
@@ -521,11 +581,13 @@ void LevelPlayer::draw_region() {
 }
 
 void LevelPlayer::draw_arrangement() {
-    for (const Entry &entry : session_->state().arrangement().entries()) {
+    const engine::State &state = state_->session().state();
+    const std::vector<godot::Color> &colors = state_->colors();
+    for (const Entry &entry : state.arrangement().entries()) {
         godot::Color fill(0.8f, 0.8f, 0.8f, 1.0f);
-        for (std::size_t i = 0; i < session_->state().palette().entries().size(); ++i) {
-            if (session_->state().palette().entries()[i].prototile().id() == entry.placement.prototile().id()) {
-                fill = colors_[i];
+        for (std::size_t i = 0; i < state.palette().entries().size() && i < colors.size(); ++i) {
+            if (state.palette().entries()[i].prototile().id() == entry.placement.prototile().id()) {
+                fill = colors[i];
                 break;
             }
         }
@@ -537,7 +599,7 @@ void LevelPlayer::draw_ghost() {
     if (!active_proposal_.has_value()) {
         return;
     }
-    godot::Color color = colors_[selection_->entry];
+    godot::Color color = state_->colors()[state_->selection()->entry];
     color.a = GHOST_ALPHA;
     const Polygon &polygon = proposals_[active_proposal_.value()].placement.footprint();
     for (const Triangle &triangle : polygon.triangulation()) {
@@ -557,8 +619,11 @@ void LevelPlayer::draw_ghost() {
 void LevelPlayer::_draw() {
     update_canvas_rect();
     update_projection();
+    // The canvas is opaque over its whole rect. Two of them are edge-adjacent
+    // while a problem transition runs, so nothing behind them is ever visible
+    // between them.
     draw_rect(canvas_rect_, CANVAS_BACKGROUND);
-    if (!session_.has_value()) {
+    if (state_ == nullptr) {
         return;
     }
     draw_region();
@@ -566,50 +631,36 @@ void LevelPlayer::_draw() {
     draw_ghost();
 }
 
-void LevelPlayer::_gui_input(const godot::Ref<godot::InputEvent> &p_event) {
-    const godot::Ref<godot::InputEventKey> key = p_event;
-    if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
-        if (key->is_ctrl_pressed() && key->get_keycode() == godot::KEY_Z) {
-            undo();
-        } else if (key->get_keycode() == godot::KEY_TAB) {
-            cycle_entry(!key->is_shift_pressed());
-        } else if (key->get_keycode() == godot::KEY_R) {
-            cycle_orientation(!key->is_shift_pressed());
-        }
-        return;
-    }
-    const godot::Ref<godot::InputEventMouseMotion> motion = p_event;
-    if (motion.is_valid()) {
-        if (canvas_rect_.has_point(motion->get_position())) {
-            set_pointer(motion->get_position());
-        }
-        return;
-    }
-    const godot::Ref<godot::InputEventMouseButton> button = p_event;
-    if (!button.is_valid() || !button->is_pressed() || !canvas_rect_.has_point(button->get_position())) {
-        return;
-    }
-    grab_focus();
-    if (button->get_button_index() == godot::MOUSE_BUTTON_LEFT) {
-        accept_active_proposal();
-    } else if (button->get_button_index() == godot::MOUSE_BUTTON_RIGHT) {
-        remove_at_local(button->get_position());
-    }
+const engine::Session *LevelPlayer::session() const {
+    return state_ != nullptr ? &state_->session() : nullptr;
 }
 
-bool LevelPlayer::initialized() const { return session_.has_value(); }
-const engine::Session *LevelPlayer::session() const { return session_.has_value() ? &session_.value() : nullptr; }
-std::optional<LevelPlayer::Selection> LevelPlayer::selection() const { return selection_; }
-const std::vector<LevelPlayer::Proposal> &LevelPlayer::proposals() const { return proposals_; }
-std::optional<std::size_t> LevelPlayer::active_proposal() const { return active_proposal_; }
-std::optional<godot::Color> LevelPlayer::entry_color(std::size_t p_entry) const { return p_entry < colors_.size() ? std::optional<godot::Color>(colors_[p_entry]) : std::nullopt; }
-const PrototilePreview *LevelPlayer::entry_preview(std::size_t p_entry) const {
-    return p_entry < entry_controls_.size() ? entry_controls_[p_entry].preview : nullptr;
+std::optional<LevelPlayer::Selection> LevelPlayer::selection() const {
+    return state_ != nullptr ? state_->selection() : std::nullopt;
 }
-bool LevelPlayer::entry_supply_visible(std::size_t p_entry) const {
-    return p_entry < entry_controls_.size() && entry_controls_[p_entry].supply->is_visible();
+
+const std::vector<LevelPlayer::Proposal> &LevelPlayer::proposals() const {
+    return proposals_;
 }
-bool LevelPlayer::completion_visible() const { return session_.has_value() && session_->state().solved(); }
-godot::Rect2 LevelPlayer::canvas_rect() const { return canvas_rect_; }
+
+std::optional<std::size_t> LevelPlayer::active_proposal() const {
+    return active_proposal_;
+}
+
+bool LevelPlayer::completion_visible() const {
+    return completion_label_ != nullptr && completion_label_->is_visible();
+}
+
+const godot::Label *LevelPlayer::number_label() const {
+    return number_label_;
+}
+
+const godot::RichTextLabel *LevelPlayer::completion_label() const {
+    return completion_label_;
+}
+
+godot::Rect2 LevelPlayer::canvas_rect() const {
+    return canvas_rect_;
+}
 
 } // namespace tiles::game
