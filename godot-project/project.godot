@@ -13,7 +13,8 @@ config_version=5
 config/name="tiles"
 run/main_scene="res://exam.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://icon.svg"
+boot_splash/show_image=false
+config/icon="uid://dis3xlcwotcw4"
 
 [display]
 
