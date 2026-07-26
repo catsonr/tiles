@@ -46,6 +46,8 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 theme_override_constants/separation = 6
 
+[node name="Audio" type="AudioDirector" parent="."]
+
 [node name="Status" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 12

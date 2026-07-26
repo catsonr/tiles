@@ -91,10 +91,14 @@ bool contains_screen_polygon(const godot::PackedVector2Array &p_points, godot::V
 void LevelPlayer::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo(
         "palette_selected", godot::PropertyInfo(godot::Variant::INT, "entry")));
+    // `forward` is the direction the player asked for, not a property of the
+    // orientation it landed on: cycling backward to the same index is still a
+    // backward turn.
     ADD_SIGNAL(godot::MethodInfo(
         "orientation_changed",
         godot::PropertyInfo(godot::Variant::INT, "entry"),
-        godot::PropertyInfo(godot::Variant::INT, "orientation")));
+        godot::PropertyInfo(godot::Variant::INT, "orientation"),
+        godot::PropertyInfo(godot::Variant::BOOL, "forward")));
     ADD_SIGNAL(godot::MethodInfo(
         "placement_succeeded", godot::PropertyInfo(godot::Variant::INT, "entry")));
     ADD_SIGNAL(godot::MethodInfo("removal_succeeded"));
@@ -215,7 +219,8 @@ void LevelPlayer::cycle_orientation(bool p_forward) {
         emit_signal(
             godot::StringName("orientation_changed"),
             static_cast<std::int64_t>(selection.entry),
-            static_cast<std::int64_t>(orientation));
+            static_cast<std::int64_t>(orientation),
+            p_forward);
     }
     emit_ghost_change(before);
 }

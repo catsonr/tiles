@@ -82,7 +82,7 @@ void Exam::_bind_methods() {
         godot::D_METHOD("on_canvas_palette_selected", "entry"),
         &Exam::on_canvas_palette_selected);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("on_canvas_orientation_changed", "entry", "orientation"),
+        godot::D_METHOD("on_canvas_orientation_changed", "entry", "orientation", "forward"),
         &Exam::on_canvas_orientation_changed);
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_canvas_placement_succeeded", "entry"),
@@ -106,7 +106,8 @@ void Exam::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo(
         "orientation_changed",
         godot::PropertyInfo(godot::Variant::INT, "entry"),
-        godot::PropertyInfo(godot::Variant::INT, "orientation")));
+        godot::PropertyInfo(godot::Variant::INT, "orientation"),
+        godot::PropertyInfo(godot::Variant::BOOL, "forward")));
     ADD_SIGNAL(godot::MethodInfo(
         "placement_succeeded", godot::PropertyInfo(godot::Variant::INT, "entry")));
     ADD_SIGNAL(godot::MethodInfo("removal_succeeded"));
@@ -691,8 +692,9 @@ void Exam::on_canvas_palette_selected(std::int64_t p_entry) {
     emit_signal(godot::StringName("palette_selected"), p_entry);
 }
 
-void Exam::on_canvas_orientation_changed(std::int64_t p_entry, std::int64_t p_orientation) {
-    emit_signal(godot::StringName("orientation_changed"), p_entry, p_orientation);
+void Exam::on_canvas_orientation_changed(
+    std::int64_t p_entry, std::int64_t p_orientation, bool p_forward) {
+    emit_signal(godot::StringName("orientation_changed"), p_entry, p_orientation, p_forward);
 }
 
 void Exam::on_canvas_placement_succeeded(std::int64_t p_entry) {

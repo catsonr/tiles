@@ -1,0 +1,8 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=2 format=3]
+
+[ext_resource type="AudioStream" uid="uid://dbwgdnrn8w6gm" path="res://audio/scroll_lock.mp3" id="1_scroll_lock"]
+
+[resource]
+streams_count = 1
+stream_0/stream = ExtResource("1_scroll_lock")
+stream_0/weight = 1.0

@@ -1,0 +1,17 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=5 format=3]
+
+[ext_resource type="AudioStream" uid="uid://dmt7otrfxlrou" path="res://audio/place/place_1.mp3" id="1_place"]
+[ext_resource type="AudioStream" uid="uid://bcidtcklmai61" path="res://audio/place/place_2.mp3" id="2_place"]
+[ext_resource type="AudioStream" uid="uid://d2vijieed7ey" path="res://audio/place/place_3.mp3" id="3_place"]
+[ext_resource type="AudioStream" uid="uid://dx4qdy7060x58" path="res://audio/place/place_4.mp3" id="4_place"]
+
+[resource]
+streams_count = 4
+stream_0/stream = ExtResource("1_place")
+stream_0/weight = 1.0
+stream_1/stream = ExtResource("2_place")
+stream_1/weight = 1.0
+stream_2/stream = ExtResource("3_place")
+stream_2/weight = 1.0
+stream_3/stream = ExtResource("4_place")
+stream_3/weight = 1.0

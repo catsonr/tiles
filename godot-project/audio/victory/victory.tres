@@ -1,0 +1,20 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=6 format=3]
+
+[ext_resource type="AudioStream" uid="uid://b1l1ykbrr5576" path="res://audio/victory/victory_1.mp3" id="1_victory"]
+[ext_resource type="AudioStream" uid="uid://cf1qvjf12xcax" path="res://audio/victory/victory_2.mp3" id="2_victory"]
+[ext_resource type="AudioStream" uid="uid://cqebmcos7jx4k" path="res://audio/victory/victory_3.mp3" id="3_victory"]
+[ext_resource type="AudioStream" uid="uid://lrd11s5yx76p" path="res://audio/victory/victory_4.mp3" id="4_victory"]
+[ext_resource type="AudioStream" uid="uid://yer2iay351a0" path="res://audio/victory/victory_5.mp3" id="5_victory"]
+
+[resource]
+streams_count = 5
+stream_0/stream = ExtResource("1_victory")
+stream_0/weight = 1.0
+stream_1/stream = ExtResource("2_victory")
+stream_1/weight = 1.0
+stream_2/stream = ExtResource("3_victory")
+stream_2/weight = 1.0
+stream_3/stream = ExtResource("4_victory")
+stream_3/weight = 1.0
+stream_4/stream = ExtResource("5_victory")
+stream_4/weight = 1.0

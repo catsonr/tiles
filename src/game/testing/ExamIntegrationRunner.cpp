@@ -138,7 +138,7 @@ void ExamIntegrationRunner::_bind_methods() {
         godot::D_METHOD("on_palette_selected", "entry"),
         &ExamIntegrationRunner::on_palette_selected);
     godot::ClassDB::bind_method(
-        godot::D_METHOD("on_orientation_changed", "entry", "orientation"),
+        godot::D_METHOD("on_orientation_changed", "entry", "orientation", "forward"),
         &ExamIntegrationRunner::on_orientation_changed);
     godot::ClassDB::bind_method(
         godot::D_METHOD("on_placement_succeeded", "entry"),
@@ -161,7 +161,7 @@ void ExamIntegrationRunner::on_palette_selected(std::int64_t) {
     ++hooks_.palette_selected;
 }
 
-void ExamIntegrationRunner::on_orientation_changed(std::int64_t, std::int64_t) {
+void ExamIntegrationRunner::on_orientation_changed(std::int64_t, std::int64_t, bool) {
     ++hooks_.orientation_changed;
 }
 

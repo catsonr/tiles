@@ -1,10 +1,12 @@
 #include "register_types.h"
 
+#include "game/AudioDirector.h"
 #include "game/Exam.h"
 #include "game/LevelEditor.h"
 #include "game/LevelPlayer.h"
 #include "game/PrototilePreview.h"
 #include "game/resources/LevelResources.h"
+#include "game/testing/AudioIntegrationRunner.h"
 #include "game/testing/ExamIntegrationRunner.h"
 #include "game/testing/LevelEditorIntegrationRunner.h"
 #include "game/testing/LevelPlayerIntegrationRunner.h"
@@ -33,12 +35,15 @@ void initialize_tiles_module(godot::ModuleInitializationLevel p_level) {
     GDREGISTER_CLASS(tiles::game::LevelEditorIntegrationRunner);
     GDREGISTER_CLASS(tiles::game::LevelPlayerIntegrationRunner);
     GDREGISTER_CLASS(tiles::game::ExamIntegrationRunner);
+    GDREGISTER_CLASS(tiles::game::AudioIntegrationRunner);
 
     // The row preview is constructed by LevelEditor and by the exam's palette,
     // so it must exist in ClassDB before the main scene is instantiated. The
     // exam instantiates the problem canvas scene, so the player must exist
-    // before the exam does.
+    // before the exam does. The audio director is a child of the exam scene, so
+    // it must exist before that scene is instantiated too.
     GDREGISTER_CLASS(tiles::game::PrototilePreview);
+    GDREGISTER_CLASS(tiles::game::AudioDirector);
     GDREGISTER_CLASS(tiles::game::LevelEditor);
     GDREGISTER_CLASS(tiles::game::LevelPlayer);
     GDREGISTER_CLASS(tiles::game::Exam);

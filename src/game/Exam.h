@@ -140,7 +140,8 @@ private:
 
     void on_palette_pressed(std::int64_t p_entry);
     void on_canvas_palette_selected(std::int64_t p_entry);
-    void on_canvas_orientation_changed(std::int64_t p_entry, std::int64_t p_orientation);
+    void on_canvas_orientation_changed(
+        std::int64_t p_entry, std::int64_t p_orientation, bool p_forward);
     void on_canvas_placement_succeeded(std::int64_t p_entry);
     void on_canvas_removal_succeeded();
     void on_canvas_undo_succeeded();

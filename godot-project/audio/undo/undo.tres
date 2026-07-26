@@ -1,0 +1,11 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=3 format=3]
+
+[ext_resource type="AudioStream" uid="uid://csboln78eu3wx" path="res://audio/undo/undo_1.mp3" id="1_undo"]
+[ext_resource type="AudioStream" uid="uid://dcawadlm5wycm" path="res://audio/undo/undo_2.mp3" id="2_undo"]
+
+[resource]
+streams_count = 2
+stream_0/stream = ExtResource("1_undo")
+stream_0/weight = 1.0
+stream_1/stream = ExtResource("2_undo")
+stream_1/weight = 1.0

@@ -35,7 +35,7 @@ public:
     // Signal sinks. Every semantic hook the exam or a canvas emits is counted
     // here through an ordinary Godot connection.
     void on_palette_selected(std::int64_t p_entry);
-    void on_orientation_changed(std::int64_t p_entry, std::int64_t p_orientation);
+    void on_orientation_changed(std::int64_t p_entry, std::int64_t p_orientation, bool p_forward);
     void on_placement_succeeded(std::int64_t p_entry);
     void on_removal_succeeded();
     void on_undo_succeeded();
